@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zalo Auto Reply Bot</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🤖 Zalo Auto Reply Bot</h1>
+            <p class="subtitle">Tự động trả lời tin nhắn Zalo</p>
+        </div>
+
+        <!-- Login Section -->
+        <div id="loginSection" class="section">
+            <div class="status-box">
+                <span class="status-dot offline"></span>
+                <span>Trạng thái: Chưa đăng nhập</span>
+            </div>
+            
+            <button id="loginBtn" class="btn btn-primary">
+                📱 Đăng nhập bằng QR Code
+            </button>
+
+            <!-- QR Code Display -->
+            <div id="qrContainer" style="display: none;">
+                <h3>Quét mã QR bằng app Zalo:</h3>
+                <div id="qrCode"></div>
+                <p class="hint">Mở Zalo → Cài đặt → Đăng nhập trên máy tính</p>
+            </div>
+        </div>
+
+        <!-- Control Section -->
+        <div id="controlSection" class="section" style="display: none;">
+            <div class="status-box">
+                <span class="status-dot online"></span>
+                <span>Trạng thái: Đã đăng nhập</span>
+                <button id="logoutBtn" class="btn btn-small">Đăng xuất</button>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Auto Reply Toggle -->
+            <div class="control-group">
+                <label class="control-label">
+                    <span>Auto Reply:</span>
+                    <div class="toggle-switch">
+                        <input type="checkbox" id="autoReplyToggle">
+                        <span class="slider"></span>
+                    </div>
+                </label>
+                <span id="toggleStatus" class="toggle-status">⚫ TẮT</span>
+            </div>
+
+            <!-- Message Input -->
+            <div class="control-group">
+                <label for="autoMessage">Tin nhắn tự động:</label>
+                <textarea 
+                    id="autoMessage" 
+                    rows="3" 
+                    placeholder="Nhập tin nhắn tự động..."
+                >Xin chào! Tôi đang bận, sẽ phản hồi bạn sau. 🙏</textarea>
+                <button id="updateMessageBtn" class="btn btn-secondary">
+                    💾 Lưu tin nhắn
+                </button>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Log Section -->
+            <div class="log-section">
+                <h3>📋 Log tin nhắn:</h3>
+                <div id="logContainer" class="log-container">
+                    <div class="log-item info">
+                        <span class="log-time">[--:--:--]</span>
+                        <span class="log-message">Chờ tin nhắn mới...</span>
+                    </div>
+                </div>
+                <button id="clearLogBtn" class="btn btn-small">🗑️ Xóa log</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

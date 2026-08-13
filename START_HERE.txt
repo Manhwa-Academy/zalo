@@ -1,0 +1,84 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║         🤖 ZALO AUTO REPLY BOT - HƯỚNG DẪN NHANH 🤖          ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+✅ CÀI ĐẶT THÀNH CÔNG!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 CHẠY ỨNG DỤNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ Mở Terminal/CMD tại thư mục này
+
+2️⃣ Chạy lệnh:
+   
+   npm run dev
+   
+   (Chạy trên trình duyệt - http://localhost:3000)
+   
+   HOẶC
+   
+   npm run electron:dev
+   
+   (Chạy Desktop App)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  QUAN TRỌNG - ĐỌC KỸ! ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📱 MÃ QR ĐĂNG NHẬP sẽ hiển thị trong TERMINAL/CMD
+
+   ❌ KHÔNG phải trong giao diện app!
+   ✅ PHẢI xem trong cửa sổ Terminal/CMD này!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📖 CÁC BƯỚC SỬ DỤNG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Chạy app: npm run dev
+
+2. Truy cập: http://localhost:3000 (nếu dùng browser)
+
+3. Click "Đăng nhập bằng QR Code"
+
+4. XEM TERMINAL → Quét mã QR bằng Zalo trên điện thoại
+
+5. Nhập tin nhắn tự động hoặc chọn mẫu
+
+6. BẬT bot (toggle switch)
+
+7. Xong! Bot sẽ tự động trả lời tin nhắn
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 BUILD FILE .EXE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+npm run package
+
+File .exe sẽ có trong thư mục: dist/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 TÀI LIỆU CHI TIẾT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Xem file: HUONG_DAN_SU_DUNG.md
+Xem file: README.md
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  CẢNH BÁO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- API không chính thức - có thể vi phạm điều khoản Zalo
+- Tài khoản có thể bị khóa nếu Zalo phát hiện
+- Chỉ dùng cho mục đích cá nhân, học tập
+- KHÔNG spam hoặc lạm dụng
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 Chúc bạn sử dụng vui vẻ!
+
+Tạo bởi Kiro AI 🤖
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

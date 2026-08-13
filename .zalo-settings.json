@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "autoReplyMessage": ".",
+  "whitelist": [],
+  "blacklist": [],
+  "replyScope": "user_only"
+}
