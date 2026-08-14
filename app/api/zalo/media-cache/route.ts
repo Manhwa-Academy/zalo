@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
-import path from 'path'
+import { dataFilePath } from '@/lib/data-dir'
 
-const MEDIA_CACHE_FILE = path.join(process.cwd(), '.zalo-media-cache.json')
+const MEDIA_CACHE_FILE = dataFilePath('.zalo-media-cache.json')
 
 function loadMediaCache(): Record<string, string> {
   try {

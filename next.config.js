@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Remove 'export' to enable API routes
+  experimental: {
+    instrumentationHook: true,
+  },
   images: {
     unoptimized: true,
   },

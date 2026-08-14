@@ -1,5 +1,5 @@
 import fs from 'fs'
-import path from 'path'
+import { dataFilePath } from './data-dir'
 
 export interface BotSettings {
   enabled: boolean
@@ -12,7 +12,7 @@ export interface BotSettings {
   chatBackground?: string
 }
 
-const SETTINGS_FILE = path.join(process.cwd(), '.zalo-settings.json')
+const SETTINGS_FILE = dataFilePath('.zalo-settings.json')
 
 const DEFAULT_PRESETS = [
   'E-Eto... tôi là Monica Everett... xin hãy chiếu cố cho tôi từ bây giờ nhé... 🌸✨🥺🤍',

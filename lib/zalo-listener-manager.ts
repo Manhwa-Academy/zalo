@@ -1,8 +1,8 @@
 import fs from 'fs'
-import path from 'path'
 import { getBotSettings } from './bot-settings'
+import { dataFilePath } from './data-dir'
 
-const MESSAGES_FILE = path.join(process.cwd(), '.zalo-messages.json')
+const MESSAGES_FILE = dataFilePath('.zalo-messages.json')
 
 export let sseClients: { id: number; controller: ReadableStreamDefaultController }[] = []
 let clientCounter = 0

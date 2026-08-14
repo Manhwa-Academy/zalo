@@ -2,12 +2,13 @@ import { NextResponse } from 'next/server'
 import { getZaloApi } from '@/lib/zalo-instance'
 import { broadcastMessage } from '@/lib/zalo-listener-manager'
 import { imageMetadataGetter } from '@/lib/image-metadata-getter'
+import { dataFilePath } from '@/lib/data-dir'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
 // Cache file for storing filename -> URL mapping for uploaded media
-const MEDIA_CACHE_FILE = path.join(process.cwd(), '.zalo-media-cache.json')
+const MEDIA_CACHE_FILE = dataFilePath('.zalo-media-cache.json')
 
 function loadMediaCache(): Record<string, string> {
   try {

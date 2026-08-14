@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
-import path from 'path'
+import { dataFilePath } from '@/lib/data-dir'
 
-const SESSION_FILE = path.join(process.cwd(), '.zalo-session.json')
+const SESSION_FILE = dataFilePath('.zalo-session.json')
 
 // Save session to file
 export async function POST(request: Request) {

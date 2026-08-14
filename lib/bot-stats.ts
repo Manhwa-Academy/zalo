@@ -1,7 +1,7 @@
 import fs from 'fs'
-import path from 'path'
+import { dataFilePath } from './data-dir'
 
-const STATS_FILE = path.join(process.cwd(), '.zalo-stats.json')
+const STATS_FILE = dataFilePath('.zalo-stats.json')
 
 interface StatsStructure {
   totalMessages: number

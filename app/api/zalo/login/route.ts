@@ -3,10 +3,10 @@ import { Zalo, LoginQRCallbackEventType } from 'zca-js'
 import { setZaloApi, getZaloApi, setZaloUserInfo, getZaloUserInfo } from '@/lib/zalo-instance'
 import { imageMetadataGetter } from '@/lib/image-metadata-getter'
 import { getQrState, updateQrState, resetQrState } from '@/lib/qr-state'
+import { dataFilePath } from '@/lib/data-dir'
 import fs from 'fs'
-import path from 'path'
 
-const SESSION_FILE = path.join(process.cwd(), '.zalo-session.json')
+const SESSION_FILE = dataFilePath('.zalo-session.json')
 let loginInProgress = false
 
 function saveSessionFromApi(zaloApi: any) {
