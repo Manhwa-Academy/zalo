@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getZaloApi } from '@/lib/zalo-instance'
-import { attachListenerToApi, messageQueue, sseClients } from '@/lib/zalo-listener-manager'
+import { attachListenerToApi, clearStoredMessages, messageQueue, sseClients } from '@/lib/zalo-listener-manager'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -30,6 +30,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Listener stopped' })
     }
 
+    if (action === 'clearLogs') {
+      console.log('🧹 Clearing all stored message logs...')
+      clearStoredMessages()
+      return NextResponse.json({ success: true, message: 'Message logs cleared' })
+    }
+
     return NextResponse.json({ success: true, message: 'Listener status checked' })
   } catch (error: any) {
     console.error('Listener POST error:', error)
@@ -47,7 +53,7 @@ export async function GET() {
 
   const stream = new ReadableStream({
     start(controller) {
-      const client = { controller }
+      const client = { id: Date.now(), controller }
       sseClients.push(client)
 
       // Send initial connection message

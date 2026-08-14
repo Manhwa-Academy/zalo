@@ -16,7 +16,7 @@ function createWindow() {
       contextIsolation: false,
       enableRemoteModule: true
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '../public/aris.png'),
     frame: true,
     titleBarStyle: 'default'
   });

@@ -7,6 +7,9 @@ const inter = Inter({ subsets: ['latin', 'vietnamese'] })
 export const metadata: Metadata = {
   title: 'Zalo Auto Reply Bot',
   description: 'Tự động trả lời tin nhắn Zalo',
+  icons: {
+    icon: '/aris.png',
+  },
 }
 
 export default function RootLayout({

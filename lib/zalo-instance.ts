@@ -1,4 +1,5 @@
 import { attachListenerToApi } from './zalo-listener-manager'
+import { imageMetadataGetter } from './image-metadata-getter'
 
 declare global {
   var __zaloApiInstance__: any
@@ -6,6 +7,9 @@ declare global {
 }
 
 export function setZaloApi(api: any) {
+  if (api && api.ctx && api.ctx.options) {
+    api.ctx.options.imageMetadataGetter = imageMetadataGetter
+  }
   ;(globalThis as any).__zaloApiInstance__ = api
   console.log('✅ Global zaloApi set:', !!api)
   if (api) {
@@ -15,6 +19,9 @@ export function setZaloApi(api: any) {
 
 export function getZaloApi() {
   const api = (globalThis as any).__zaloApiInstance__ || null
+  if (api && api.ctx && api.ctx.options && !api.ctx.options.imageMetadataGetter) {
+    api.ctx.options.imageMetadataGetter = imageMetadataGetter
+  }
   return api
 }
 

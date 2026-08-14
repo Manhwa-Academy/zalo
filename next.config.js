@@ -4,6 +4,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  compiler: {
+    // Automatically strip all console.log in Production deployment (F12 clean)
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
+  },
   webpack: (config, { isServer }) => {
     // Only bundle node modules on server side
     if (!isServer) {

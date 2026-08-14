@@ -36,3 +36,11 @@ next-env.d.ts
 
 # Electron
 /release/
+
+# Zalo session and data files
+.zalo-session.json
+.zalo-messages.json
+.zalo-stats.json
+.zalo-settings.json
+.zalo-media-cache.json
+qr.png

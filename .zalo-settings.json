@@ -1,7 +1,18 @@
 {
-  "enabled": false,
-  "autoReplyMessage": ".",
-  "whitelist": [],
+  "enabled": true,
+  "autoReplyMessage": "A-Anou... đừng nói cho mọi người biết nhé... tôi tin bạn đó... 🥺🌸🤍✨",
+  "replyScope": "user_only",
+  "whitelist": [
+    "323684691472053501"
+  ],
   "blacklist": [],
-  "replyScope": "user_only"
+  "useRandomPreset": true,
+  "presetMessages": [
+    "E-Eto... tôi là Monica Everett... xin hãy chiếu cố cho tôi từ bây giờ nhé... 🌸✨🥺🤍",
+    "U-Um... nếu tôi trốn sau cánh cửa thì xin đừng kéo tôi ra nhé... 🚪🥺💦",
+    "Fuee... c-chuyện này khó quá đi mất... (⁠՚⁠﹏⁠՚⁠)💦",
+    "A-Anou... đừng nói cho mọi người biết nhé... tôi tin bạn đó... 🥺🌸🤍✨",
+    "S-Sono... nếu có thể giúp được mọi người thì tôi rất vui... 🍀🤍✨"
+  ],
+  "chatBackground": "/background.png"
 }

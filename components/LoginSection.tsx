@@ -1,66 +1,148 @@
 import React from 'react'
+import { QrState } from '@/lib/qr-state'
 
 interface LoginSectionProps {
   isLoading: boolean
-  qrCode: string | null
-  onLogin: () => void
+  qrState?: QrState | null
+  onLogin: (force?: boolean) => void
 }
 
-export default function LoginSection({ isLoading, qrCode, onLogin }: LoginSectionProps) {
+export default function LoginSection({ isLoading, qrState, onLogin }: LoginSectionProps) {
+  const status = qrState?.status || 'idle'
+  const qrImage = qrState?.qrImage
+  const scannedUser = qrState?.scannedUser
+
   return (
-    <div className="card max-w-md mx-auto text-center animate-slideIn">
-      <div className="w-20 h-20 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center mx-auto mb-4">
-        <svg className="w-12 h-12" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-        </svg>
-      </div>
+    <div className="card max-w-lg mx-auto text-center animate-slideIn space-y-6">
+      {/* Header Avatar / Icon */}
+      <img 
+        src="/aris.png" 
+        alt="Logo Aris" 
+        className="w-20 h-20 mx-auto rounded-3xl object-cover shadow-lg border border-white/10"
+      />
       
-      <h2 className="text-2xl font-bold mb-2">Chào mừng đến với Zalo Bot</h2>
-      <p className="text-gray-400 mb-6">
-        Đăng nhập bằng mã QR để bắt đầu sử dụng
-      </p>
-      
-      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mb-6">
-        <p className="text-sm text-yellow-400">
-          ⚠️ <strong>Lưu ý:</strong> Mã QR sẽ hiển thị trong <strong>Terminal/Console</strong>
-        </p>
-        <p className="text-xs text-gray-400 mt-2">
-          Kiểm tra cửa sổ terminal để quét mã QR bằng Zalo trên điện thoại
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Đăng nhập Zalo Bot</h2>
+        <p className="text-sm text-gray-400 mt-1">
+          Quét mã QR trực tiếp bên dưới bằng ứng dụng Zalo trên điện thoại
         </p>
       </div>
-      
-      {isLoading ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-center space-x-2">
-            <svg className="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+
+      {/* Main Display Area */}
+      <div className="min-h-[280px] flex flex-col items-center justify-center p-6 bg-dark-300/60 rounded-2xl border border-dark-200">
+        {/* State 1: QR Ready to Scan */}
+        {qrImage && (status === 'qr_ready' || status === 'generating') && (
+          <div className="space-y-4 animate-slideIn">
+            <div className="relative inline-block p-3 bg-white rounded-2xl shadow-2xl border-4 border-sky-500/30">
+              <img
+                src={qrImage}
+                alt="Mã QR Đăng nhập Zalo"
+                className="w-56 h-56 object-contain rounded-lg"
+              />
+              {status === 'generating' && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-sky-400 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-sky-400 flex items-center justify-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
+                📱 Mở Zalo ➔ Chọn icon [Quét mã QR]
+              </p>
+              <p className="text-[11px] text-gray-400">
+                Mã QR hiển thị trực tiếp trên web • Không cần kiểm tra terminal
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-gray-400">
-            Đang chờ quét mã QR trong terminal...
-          </p>
-          <div className="flex items-center justify-center space-x-2">
-            <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-            <div className="w-2 h-2 bg-primary rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+        )}
+
+        {/* State 2: Scanned on phone, waiting for confirmation */}
+        {status === 'scanned' && (
+          <div className="space-y-4 animate-slideIn py-4">
+            <div className="w-20 h-20 rounded-full bg-success/20 border-2 border-success flex items-center justify-center mx-auto shadow-lg relative">
+              {scannedUser?.avatar ? (
+                <img src={scannedUser.avatar} alt={scannedUser.name} className="w-full h-full rounded-full object-cover" />
+              ) : (
+                <span className="text-3xl">👤</span>
+              )}
+              <span className="absolute bottom-0 right-0 w-6 h-6 bg-success rounded-full flex items-center justify-center text-white text-xs font-bold">
+                ✓
+              </span>
+            </div>
+
+            <div>
+              <h4 className="text-base font-bold text-success">
+                Đã quét thành công!
+              </h4>
+              <p className="text-sm font-semibold text-white mt-1">
+                {scannedUser?.name || 'Tài khoản Zalo'}
+              </p>
+              <p className="text-xs text-yellow-400 mt-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2.5">
+                👉 Vui lòng mở điện thoại và bấm <strong>[XÁC NHẬN ĐĂNG NHẬP]</strong>
+              </p>
+            </div>
           </div>
-        </div>
-      ) : (
-        <button
-          onClick={onLogin}
-          className="btn btn-primary w-full flex items-center justify-center space-x-2"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm15 0h3v3h-3v-3zm0 5h3v3h-3v-3zm-5-5h3v3h-3v-3z"/>
-          </svg>
-          <span>Đăng nhập bằng QR Code</span>
-        </button>
-      )}
-      
-      <div className="mt-6 pt-6 border-t border-dark-300">
-        <p className="text-xs text-gray-500">
-          ⚠️ Đây là API không chính thức. Sử dụng có thể vi phạm điều khoản Zalo.
+        )}
+
+        {/* State 3: Generating initial QR */}
+        {status === 'generating' && !qrImage && (
+          <div className="space-y-3 py-8">
+            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-sm text-gray-300 font-medium">Đang khởi tạo mã QR đăng nhập...</p>
+            <p className="text-xs text-gray-500">Vui lòng chờ vài giây</p>
+          </div>
+        )}
+
+        {/* State 4: Expired or Error */}
+        {(status === 'expired' || status === 'declined' || status === 'error') && (
+          <div className="space-y-4 py-4 max-w-xs">
+            <div className="w-14 h-14 bg-danger/20 border border-danger/40 text-danger rounded-full flex items-center justify-center mx-auto text-2xl">
+              ⚠️
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-danger">
+                {status === 'expired' && 'Mã QR đã hết hạn!'}
+                {status === 'declined' && 'Đã bị từ chối đăng nhập!'}
+                {status === 'error' && 'Đăng nhập không thành công'}
+              </h4>
+              <p className="text-xs text-gray-400 mt-1">
+                {qrState?.error || 'Vui lòng bấm nút bên dưới để tạo mã QR mới.'}
+              </p>
+            </div>
+            <button
+              onClick={() => onLogin(true)}
+              className="btn btn-primary text-xs py-2 px-6 w-full shadow-lg"
+            >
+              🔄 Tạo mã QR mới
+            </button>
+          </div>
+        )}
+
+        {/* State 5: Idle */}
+        {status === 'idle' && !isLoading && (
+          <div className="space-y-4 py-6">
+            <p className="text-xs text-gray-400">
+              Nhấn nút bên dưới để tạo mã QR và đăng nhập vào Bot.
+            </p>
+            <button
+              onClick={() => onLogin(true)}
+              className="btn btn-primary text-sm py-3 px-8 flex items-center justify-center gap-2 mx-auto shadow-xl hover:scale-105 transition-all"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              <span>Hiển thị Mã QR Đăng Nhập</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Footer Info */}
+      <div className="pt-4 border-t border-dark-300">
+        <p className="text-[11px] text-gray-500">
+          🔒 Mã QR được tạo trực tiếp từ Zalo API và hiển thị an toàn trên giao diện Web.
         </p>
       </div>
     </div>

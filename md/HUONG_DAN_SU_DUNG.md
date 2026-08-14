@@ -108,9 +108,10 @@ npm install
 - Đóng ứng dụng khác đang chạy cổng 3000
 - Hoặc sửa port trong `package.json`
 
-### **Không thấy mã QR**
-- Kiểm tra cửa sổ Terminal/CMD
-- Mã QR hiển thị dạng ASCII art (ô vuông đen trắng)
+### **Quét mã QR đăng nhập**
+- Mã QR sẽ hiển thị **trực tiếp hình ảnh nét căng trên màn hình Web** (không cần mở Terminal/CMD).
+- Sử dụng camera ứng dụng Zalo trên điện thoại quét mã QR hiển thị trên màn hình.
+- Sau khi quét xong, giao diện web sẽ báo *"Đã quét thành công! Vui lòng bấm Xác Nhận trên điện thoại"*.
 
 ### **Bot không trả lời**
 1. Kiểm tra bot đã BẬT chưa (toggle màu xanh)

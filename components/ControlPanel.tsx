@@ -14,25 +14,49 @@ interface ControlPanelProps {
   autoReplyMessage: string
   replyScope: ReplyScope
   whitelist: string[]
+  useRandomPreset?: boolean
+  presetMessages?: string[]
   onToggleBot: () => void
   onMessageChange: (message: string) => void
   onScopeChange: (scope: ReplyScope) => void
   onWhitelistChange: (whitelist: string[]) => void
+  onToggleRandomPreset?: (enabled: boolean) => void
+  onPresetMessagesChange?: (presets: string[]) => void
 }
+
+const DEFAULT_PRESETS_FALLBACK = [
+  'E-Eto... tôi là Monica Everett... xin hãy chiếu cố cho tôi từ bây giờ nhé... 🌸✨🥺🤍',
+  'U-Um... nếu tôi trốn sau cánh cửa thì xin đừng kéo tôi ra nhé... 🚪🥺💦',
+  'Fuee... c-chuyện này khó quá đi mất... (⁠՚⁠﹏⁠՚⁠)💦',
+  'A-Anou... đừng nói cho mọi người biết nhé... tôi tin bạn đó... 🥺🌸🤍✨',
+  'S-Sono... nếu có thể giúp được mọi người thì tôi rất vui... 🍀🤍✨',
+]
 
 export default function ControlPanel({ 
   botEnabled, 
   autoReplyMessage, 
   replyScope,
   whitelist,
+  useRandomPreset = false,
+  presetMessages = DEFAULT_PRESETS_FALLBACK,
   onToggleBot, 
   onMessageChange,
   onScopeChange,
   onWhitelistChange,
+  onToggleRandomPreset,
+  onPresetMessagesChange,
 }: ControlPanelProps) {
   const [groups, setGroups] = useState<GroupItem[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
   const [manualIdInput, setManualIdInput] = useState('')
+
+  // Preset Modal & Edit State
+  const [showPresetModal, setShowPresetModal] = useState(false)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingText, setEditingText] = useState('')
+
+  // Standardize 5 presets
+  const currentPresets = Array.from({ length: 5 }, (_, i) => presetMessages[i] ?? '')
 
   const fetchGroups = async () => {
     setLoadingGroups(true)
@@ -71,71 +95,121 @@ export default function ControlPanel({
     }
   }
 
+  // Handle Preset editing
+  const startEditingPreset = (index: number) => {
+    setEditingIndex(index)
+    setEditingText(currentPresets[index] || '')
+  }
+
+  const saveEditingPreset = (index: number) => {
+    const updated = [...currentPresets]
+    updated[index] = editingText
+    onPresetMessagesChange?.(updated)
+    setEditingIndex(null)
+    setEditingText('')
+  }
+
+  const cancelEditingPreset = () => {
+    setEditingIndex(null)
+    setEditingText('')
+  }
+
   return (
-    <div className="card space-y-6">
+    <div className="card space-y-6 relative">
       {/* Header & Toggle */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-xl font-bold">Điều khiển Bot</h3>
-          <p className="text-sm text-gray-400">Bật/tắt và cấu hình tin nhắn tự động</p>
+          <h3 className="text-lg sm:text-xl font-bold">Điều khiển Bot</h3>
+          <p className="text-xs sm:text-sm text-gray-400">Bật/tắt và cấu hình tin nhắn tự động</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <span className="text-sm font-medium">Trạng thái Bot:</span>
+        <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
+          <span className="text-xs sm:text-sm font-medium">Trạng thái Bot:</span>
           <button
             onClick={onToggleBot}
-            className={`relative inline-flex h-10 w-20 items-center rounded-full transition-colors ${
+            className={`relative inline-flex h-9 w-16 sm:h-10 sm:w-20 items-center rounded-full transition-colors ${
               botEnabled ? 'bg-success' : 'bg-gray-600'
             }`}
           >
             <span
-              className={`inline-block h-8 w-8 transform rounded-full bg-white transition-transform ${
-                botEnabled ? 'translate-x-11' : 'translate-x-1'
+              className={`inline-block h-7 w-7 sm:h-8 sm:w-8 transform rounded-full bg-white transition-transform ${
+                botEnabled ? 'translate-x-8 sm:translate-x-11' : 'translate-x-1'
               }`}
             />
           </button>
-          <span className={`badge ${botEnabled ? 'badge-success' : 'badge-danger'}`}>
-            {botEnabled ? '🟢 Đang hoạt động' : '⚫ Đã tắt'}
+          <span className={`badge ${botEnabled ? 'badge-success' : 'badge-danger'} text-xs`}>
+            {botEnabled ? '🟢 Đang BẬT' : '⚫ Đã TẮT'}
           </span>
         </div>
       </div>
       
-      {/* Message Input */}
+      {/* Message Input & Random Mode Toggle */}
       <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-2">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-medium">
             Nội dung tin nhắn tự động
             <span className="text-gray-400 ml-2">({autoReplyMessage.length} ký tự)</span>
           </label>
-          <textarea
-            value={autoReplyMessage}
-            onChange={(e) => onMessageChange(e.target.value)}
-            placeholder="Nhập tin nhắn tự động..."
-            rows={3}
-            className="input resize-none"
-            maxLength={500}
-          />
+
+          {/* Preset Modal Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setShowPresetModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary-light text-xs font-semibold transition-all shadow-sm"
+          >
+            💬 5 tin nhắn soạn trước
+            <span className={`px-2 py-0.5 rounded-full text-[10px] ${useRandomPreset ? 'bg-success text-white' : 'bg-gray-700 text-gray-300'}`}>
+              {useRandomPreset ? '🎲 Random BẬT' : 'TẮT'}
+            </span>
+          </button>
         </div>
+
+        <textarea
+          value={autoReplyMessage}
+          onChange={(e) => onMessageChange(e.target.value)}
+          placeholder="Nhập tin nhắn tự động mặc định..."
+          rows={3}
+          className="input resize-none"
+          maxLength={500}
+        />
+
+        {/* Random Preset Indicator Banner if active */}
+        {useRandomPreset && (
+          <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-primary-light font-medium">
+              <span className="text-base">🎲</span>
+              <span>
+                Chế độ Trả lời Ngẫu nhiên đang <strong>BẬT</strong>. Bot sẽ chọn ngẫu nhiên 1 trong 5 tin nhắn soạn trước (khác rỗng).
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPresetModal(true)}
+              className="text-xs text-primary hover:underline font-bold shrink-0 ml-2"
+            >
+              Xem / Sửa tin nhắn
+            </button>
+          </div>
+        )}
         
-        {/* Presets */}
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            onClick={() => onMessageChange('Xin chào! Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể. 🙏')}
-            className="btn bg-dark-300 hover:bg-primary/20 text-sm"
-          >
-            📝 Mẫu 1
-          </button>
-          <button
-            onClick={() => onMessageChange('Cảm ơn bạn đã nhắn tin. Tôi sẽ trả lời trong vòng 1 giờ. ⏰')}
-            className="btn bg-dark-300 hover:bg-primary/20 text-sm"
-          >
-            📝 Mẫu 2
-          </button>
-          <button
-            onClick={() => onMessageChange('Tôi đang không online. Vui lòng để lại tin nhắn, tôi sẽ phản hồi sớm! 💬')}
-            className="btn bg-dark-300 hover:bg-primary/20 text-sm"
-          >
-            📝 Mẫu 3
-          </button>
+        {/* Quick Presets Buttons (1-5) */}
+        <div>
+          <p className="text-[11px] text-gray-400 mb-2">Bấm chọn nhanh mẫu tin nhắn soạn sẵn làm mặc định:</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {currentPresets.map((preset, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => {
+                  if (preset) onMessageChange(preset)
+                }}
+                title={preset || 'Trống'}
+                className="btn bg-dark-300 hover:bg-primary/20 text-xs truncate text-left border border-dark-200 hover:border-primary/40 flex items-center gap-1.5"
+              >
+                <span>📝</span>
+                <span className="truncate">Mẫu {index + 1}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -332,7 +406,157 @@ export default function ControlPanel({
               {replyScope === 'user_only' && '👤 Chỉ tin cá nhân'}
               {replyScope === 'group_only' && '👥 Chỉ tin nhóm'}
               {replyScope === 'whitelist' && `🎯 Nhóm chỉ định (${whitelist.length} nhóm)`}
+              {useRandomPreset && ' • 🎲 Trả lời ngẫu nhiên 1 trong 5 mẫu tin'}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 5 TIN NHẮN SOẠN TRƯỚC MODAL (Designed matching image 2) */}
+      {/* ========================================================= */}
+      {showPresetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-slideIn">
+          <div className="bg-[#121927] border border-dark-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-dark-300 text-center relative bg-[#172033]">
+              <h3 className="text-xl font-bold text-sky-400">
+                5 tin nhắn soạn trước
+              </h3>
+              <p className="text-xs text-gray-300 mt-1">
+                Chạm để sửa từng tin. Auto Rep sẽ chọn ngẫu nhiên từ các tin không trống.
+              </p>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPresetModal(false)
+                  setEditingIndex(null)
+                }}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center text-lg transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Random Reply Switch Toggle inside Modal */}
+            <div className="p-4 bg-[#1a2337] border-b border-dark-300 flex items-center justify-between px-6">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🎲</span>
+                <div>
+                  <p className="text-xs font-semibold text-white">Chế độ Trả lời Ngẫu nhiên</p>
+                  <p className="text-[10px] text-gray-400">Tự động chọn 1 trong 5 mẫu tin khi nhận tin nhắn</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onToggleRandomPreset?.(!useRandomPreset)}
+                className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors ${
+                  useRandomPreset ? 'bg-sky-500' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    useRandomPreset ? 'translate-x-8' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* 5 Preset Cards List */}
+            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+              {currentPresets.map((preset, index) => {
+                const isEditing = editingIndex === index
+
+                return (
+                  <div
+                    key={index}
+                    className={`rounded-2xl border transition-all overflow-hidden ${
+                      isEditing
+                        ? 'border-sky-500 bg-[#1e293b] p-4 shadow-lg'
+                        : 'border-dark-300/80 bg-[#162032] hover:bg-[#1a263d] hover:border-sky-500/50 p-4 cursor-pointer'
+                    }`}
+                    onClick={() => {
+                      if (!isEditing) startEditingPreset(index)
+                    }}
+                  >
+                    {isEditing ? (
+                      <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-sky-400">
+                            Chỉnh sửa Tin nhắn #{index + 1}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {editingText.length}/500 ký tự
+                          </span>
+                        </div>
+                        <textarea
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          rows={3}
+                          className="input text-xs bg-dark-300 text-white resize-none"
+                          placeholder={`Nhập tin nhắn mẫu ${index + 1}...`}
+                          autoFocus
+                          maxLength={500}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelEditingPreset}
+                            className="px-3 py-1.5 rounded-lg text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium"
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => saveEditingPreset(index)}
+                            className="px-4 py-1.5 rounded-lg text-xs bg-sky-500 hover:bg-sky-600 text-white font-bold shadow-md"
+                          >
+                            Lưu tin nhắn
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs text-gray-100 font-medium leading-relaxed">
+                          <span className="font-bold text-sky-400 mr-1.5">{index + 1}.</span>
+                          {preset.trim() ? (
+                            preset
+                          ) : (
+                            <span className="text-gray-500 italic">(Chưa có nội dung - Nhấn để thêm)</span>
+                          )}
+                        </p>
+                        <div className="flex items-center justify-between text-[11px] text-gray-400 pt-1">
+                          <span className="hover:text-sky-300 transition-colors flex items-center gap-1 font-medium">
+                            Chạm để sửa
+                          </span>
+                          <span className="text-sky-400 font-bold">›</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-dark-300 bg-[#172033] flex items-center justify-between">
+              <span className="text-[11px] text-gray-400">
+                {currentPresets.filter(p => p.trim()).length}/5 tin nhắn có sẵn
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPresetModal(false)
+                  setEditingIndex(null)
+                }}
+                className="btn btn-primary text-xs py-2 px-6"
+              >
+                Xong
+              </button>
+            </div>
+
           </div>
         </div>
       )}

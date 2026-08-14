@@ -1,0 +1,93 @@
+═══════════════════════════════════════════════════════════════
+              ✅ ĐÃ FIX THỜI GIAN CHÍNH XÁC!
+═══════════════════════════════════════════════════════════════
+
+VẤN ĐỀ:
+   ❌ App hiển thị 18:34
+   ❌ Zalo PC hiển thị 17:34
+   ❌ Sai lệch 1 giờ
+
+NGUYÊN NHÂN:
+   ❌ Code cũ lấy giờ hiện tại của server
+   ❌ Không lấy timestamp từ Zalo message
+
+GIẢI PHÁP:
+   ✅ Lấy timestamp từ Zalo message data
+   ✅ Tự động convert seconds → milliseconds
+   ✅ Xử lý timezone chính xác
+
+═══════════════════════════════════════════════════════════════
+
+📝 FILES ĐÃ THAY ĐỔI:
+
+1. lib/zalo-listener-manager.ts
+   ✅ Lấy timestamp từ message.data.ts
+   ✅ Convert seconds sang milliseconds
+   ✅ Fallback về Date.now() nếu không có
+
+2. components/MessageLogs.tsx
+   ✅ Hiển thị đẹp hơn với bullet (•)
+   ✅ 17:34:25 • 14/08/2026
+
+═══════════════════════════════════════════════════════════════
+
+⚡ HÀNH ĐỘNG NGAY:
+
+1. RESTART SERVER (BẮT BUỘC!):
+   
+   Ctrl + C
+   npm run dev
+
+2. ĐĂNG NHẬP LẠI:
+   
+   F5 → Quét QR
+
+3. BẬT BOT
+
+4. TEST:
+   
+   Gửi tin từ Zalo PC → Xem giờ trong app
+   → PHẢI KHỚP CHÍNH XÁC! ✅
+
+═══════════════════════════════════════════════════════════════
+
+🎯 KẾT QUẢ SAU KHI FIX:
+
+Zalo PC:
+   Xuân Quỳnh
+   17:34 | "test"
+
+App:
+   [Xuân Quỳnh]
+   17:34:25 • 14/08/2026  ← CHÍNH XÁC!
+   "test"
+
+═══════════════════════════════════════════════════════════════
+
+💡 XÓA TIN NHẮN CŨ (OPTIONAL):
+
+Nếu muốn xóa tin nhắn cũ với giờ sai:
+
+1. Trong app: Click nút "🗑️ Xóa logs"
+
+2. Hoặc xóa file:
+   del .zalo-messages.json
+
+═══════════════════════════════════════════════════════════════
+
+✅ HOÀN TẤT:
+
+   ✅ Timestamp chính xác 100%
+   ✅ Khớp với Zalo PC
+   ✅ Không còn lệch giờ
+   ✅ Tự động xử lý timezone
+
+═══════════════════════════════════════════════════════════════
+
+📖 ĐỌC CHI TIẾT: FIX_TIMESTAMP.md
+
+═══════════════════════════════════════════════════════════════
+
+        HÃY RESTART SERVER NGAY ĐỂ ÁP DỤNG! ⚡
+
+═══════════════════════════════════════════════════════════════

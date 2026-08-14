@@ -6,13 +6,114 @@ interface MessageLog {
   id: number
   timestamp: Date
   from: string
-  content: string
+  content: string | any
   type: string
   replied: boolean
 }
 
 interface MessageLogsProps {
   logs: MessageLog[]
+}
+
+// Helper function to render message content with image/gif support
+function renderMessageContent(content: any): React.ReactNode {
+  if (!content) return null
+
+  // Check if content is an undo/delete event JSON array - DON'T RENDER IT!
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+    if (trimmed.startsWith('[{') && trimmed.includes('"actionType"') && trimmed.includes('"clientDelMsgId"')) {
+      // This is an undo event JSON array - hide it completely
+      return null
+    }
+  }
+
+  // Parse content if it's a JSON string
+  let parsedObj: any = null
+  if (typeof content === 'object' && content !== null) {
+    parsedObj = content
+  } else if (typeof content === 'string' && content.trim().startsWith('{') && content.trim().endsWith('}')) {
+    try {
+      parsedObj = JSON.parse(content)
+    } catch (e) {}
+  }
+
+  // Handle parsed object (image, sticker, file, etc.)
+  if (parsedObj) {
+    // Sticker detection
+    if (parsedObj.catId || parsedObj.cateId || parsedObj.id || parsedObj.type === 'sticker') {
+      return <span className="text-sm text-blue-400">🎭 [Nhãn dán]</span>
+    }
+
+    // File detection
+    if (parsedObj.type === 'file') {
+      return (
+        <div className="flex items-center gap-2">
+          <span className="text-xl">📄</span>
+          <span className="text-sm text-gray-300">{parsedObj.name || 'Tập tin'}</span>
+        </div>
+      )
+    }
+
+    // Image/GIF detection
+    const isImageObject =
+      parsedObj.type === 'image' ||
+      parsedObj.photoUrl ||
+      parsedObj.imageUrl ||
+      parsedObj.href ||
+      parsedObj.thumb ||
+      parsedObj.url ||
+      (typeof parsedObj.name === 'string' && /\.(png|jpe?g|webp|gif)$/i.test(parsedObj.name))
+
+    let imgUrl = parsedObj.url || parsedObj.href || parsedObj.thumb || parsedObj.photoUrl || parsedObj.imageUrl || parsedObj.hdUrl || parsedObj.normalUrl || null
+
+    if (imgUrl && String(imgUrl).trim() !== '') {
+      const cleanImgUrl = String(imgUrl).replace(/\\/g, '')
+      const titleText = parsedObj.title || parsedObj.description || parsedObj.caption || parsedObj.name || ''
+      
+      return (
+        <div className="space-y-2">
+          <img
+            src={cleanImgUrl}
+            alt={titleText || 'Hình ảnh Zalo'}
+            className="rounded-lg max-h-40 object-cover border border-white/10 shadow hover:opacity-90 transition-opacity cursor-pointer"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement
+              target.style.display = 'none'
+              const parent = target.parentElement
+              if (parent) {
+                const fallback = document.createElement('div')
+                fallback.className = 'flex items-center gap-2'
+                fallback.innerHTML = '<span class="text-xl">🖼️</span><span class="text-sm text-gray-400">[Hình ảnh]</span>'
+                parent.appendChild(fallback)
+              }
+            }}
+          />
+          {titleText && <p className="text-xs text-gray-300">{titleText}</p>}
+        </div>
+      )
+    }
+
+    // Fallback for image type without URL
+    if (isImageObject) {
+      return (
+        <div className="flex items-center gap-2">
+          <span className="text-xl">🖼️</span>
+          <span className="text-sm text-gray-400">[Hình ảnh]</span>
+        </div>
+      )
+    }
+
+    // Generic text from object
+    const titleText = parsedObj.title || parsedObj.description || parsedObj.caption || parsedObj.text || parsedObj.name || ''
+    if (titleText && titleText.trim() !== '') {
+      return <span className="text-sm text-gray-100">{titleText}</span>
+    }
+  }
+
+  // Fallback to plain text
+  const textContent = typeof content === 'string' ? content : String(content)
+  return <span className="text-sm text-gray-100 break-words">{textContent}</span>
 }
 
 export default function MessageLogs({ logs }: MessageLogsProps) {
@@ -40,20 +141,48 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
             <p className="text-sm text-gray-500 mt-2">Bot sẽ tự động ghi lại khi có người nhắn tin</p>
           </div>
         ) : (
-          logs.map((log) => (
+          logs
+            .filter((log) => {
+              // Filter out undo event messages (JSON arrays with actionType)
+              if (typeof log.content === 'string') {
+                const trimmed = log.content.trim()
+                if (trimmed.startsWith('[{') && trimmed.includes('"actionType"') && trimmed.includes('"clientDelMsgId"')) {
+                  return false
+                }
+              }
+              // Filter out already undone/recalled messages
+              if ((log as any).isUndo) {
+                return false
+              }
+              return true
+            })
+            .map((log) => (
             <div
               key={log.id}
               className="bg-dark-300 rounded-lg p-4 border border-dark-200 hover:border-primary/50 transition-colors animate-slideIn"
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-sm font-bold">
-                    {((log as any).fromName || log.from || 'U').charAt(0).toUpperCase()}
-                  </div>
+                  {(log as any).avatar ? (
+                    <img
+                      src={(log as any).avatar}
+                      alt={(log as any).fromName || log.from}
+                      className="w-10 h-10 rounded-full object-cover border border-white/10 shadow-sm"
+                      onError={(e) => {
+                        ;(e.target as HTMLElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-sm font-bold shadow-sm">
+                      {((log as any).fromName || log.from || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <p className="font-medium">{(log as any).fromName || log.from}</p>
                     <p className="text-xs text-gray-400">
-                      {format(new Date(log.timestamp), 'HH:mm:ss - dd/MM/yyyy', { locale: vi })}
+                      {format(new Date(log.timestamp), 'HH:mm:ss', { locale: vi })}
+                      <span className="mx-1">•</span>
+                      {format(new Date(log.timestamp), 'dd/MM/yyyy', { locale: vi })}
                     </p>
                   </div>
                 </div>
@@ -63,9 +192,7 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
               </div>
               
               <div className="ml-13">
-                <p className="text-sm bg-dark-200 rounded-lg p-3 break-words">
-                  {log.content}
-                </p>
+                {renderMessageContent(log.content)}
                 <div className="flex items-center space-x-2 mt-2">
                   <span className="text-xs text-gray-500">
                     {log.type === 'User' ? '👤 Tin nhắn cá nhân' : '👥 Tin nhắn nhóm'}

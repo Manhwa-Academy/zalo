@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { Zalo } from 'zca-js'
+import { Zalo, LoginQRCallbackEventType } from 'zca-js'
 import { setZaloApi, getZaloApi, setZaloUserInfo, getZaloUserInfo } from '@/lib/zalo-instance'
+import { imageMetadataGetter } from '@/lib/image-metadata-getter'
+import { getQrState, updateQrState, resetQrState } from '@/lib/qr-state'
 import fs from 'fs'
 import path from 'path'
 
@@ -108,7 +110,7 @@ async function loginFromSavedSession(): Promise<any> {
     console.log('📂 Found saved session file, attempting auto-login...')
     const sessionRaw = fs.readFileSync(SESSION_FILE, 'utf-8')
     const credentials = JSON.parse(sessionRaw)
-    const zalo = new Zalo({ selfListen: true })
+    const zalo = new Zalo({ selfListen: true, imageMetadataGetter })
     const zaloApi = await zalo.login(credentials)
     console.log('✅ Auto-login from session successful!')
     setZaloApi(zaloApi)
@@ -123,22 +125,33 @@ async function loginFromSavedSession(): Promise<any> {
   }
 }
 
-export async function POST() {
-  if (loginInProgress) {
-    return NextResponse.json({ error: 'Login already in progress' }, { status: 400 })
+export async function POST(request: Request) {
+  let force = false
+  try {
+    const body = await request.json().catch(() => ({}))
+    force = !!body.force
+  } catch (e) {}
+
+  if (loginInProgress && !force) {
+    return NextResponse.json({
+      success: false,
+      message: 'Login already in progress',
+      qrState: getQrState()
+    })
   }
 
   try {
     loginInProgress = true
 
     let zaloApi = getZaloApi()
-    if (!zaloApi) {
+    if (!zaloApi && !force) {
       zaloApi = await loginFromSavedSession()
     }
 
-    if (zaloApi) {
+    if (zaloApi && !force) {
       const userInfo = await populateUserInfo(zaloApi)
       loginInProgress = false
+      updateQrState({ status: 'success' })
       return NextResponse.json({
         success: true,
         userInfo,
@@ -146,22 +159,78 @@ export async function POST() {
       })
     }
 
-    console.log('📱 Starting login process...')
-    console.log('⚠️  Please scan QR code in terminal!')
-    
-    const zalo = new Zalo({ selfListen: true })
-    zaloApi = await zalo.loginQR()
-    
+    console.log('📱 Starting login process & generating web QR code...')
+    resetQrState()
+    updateQrState({ status: 'generating' })
+
+    const zalo = new Zalo({ selfListen: true, imageMetadataGetter })
+
+    zaloApi = await zalo.loginQR(
+      {
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      },
+      (event: any) => {
+        console.log('📱 Login QR Event type:', event.type)
+        if (event.type === LoginQRCallbackEventType.QRCodeGenerated || event.type === 0) {
+          const rawImage = event.data?.image || ''
+          const qrDataUrl = rawImage.startsWith('data:')
+            ? rawImage
+            : `data:image/png;base64,${rawImage}`
+
+          console.log('📸 Generated QR Code image for web view!')
+          updateQrState({
+            status: 'qr_ready',
+            qrImage: qrDataUrl,
+            error: null,
+          })
+
+          try {
+            if (typeof event.actions?.saveToFile === 'function') {
+              event.actions.saveToFile('qr.png')
+            }
+          } catch (e) {}
+        } else if (event.type === LoginQRCallbackEventType.QRCodeScanned || event.type === 2) {
+          console.log('👤 QR Code Scanned by:', event.data?.display_name)
+          updateQrState({
+            status: 'scanned',
+            scannedUser: {
+              name: event.data?.display_name || 'Người dùng',
+              avatar: event.data?.avatar || '',
+            },
+          })
+        } else if (event.type === LoginQRCallbackEventType.QRCodeExpired || event.type === 1) {
+          console.log('⚠️ QR Code Expired')
+          updateQrState({
+            status: 'expired',
+            error: 'Mã QR đã hết hạn. Vui lòng tạo mã mới!',
+          })
+        } else if (event.type === LoginQRCallbackEventType.QRCodeDeclined || event.type === 3) {
+          console.log('❌ QR Code Declined on phone')
+          updateQrState({
+            status: 'declined',
+            error: 'Đăng nhập đã bị từ chối trên điện thoại!',
+          })
+        }
+      }
+    )
+
+    if (!zaloApi) {
+      throw new Error('Đăng nhập không thành công (zaloApi null)')
+    }
+
     setZaloApi(zaloApi)
     saveSessionFromApi(zaloApi)
     
-    console.log('✅ Login successful!')
-    
-    const userInfo = await populateUserInfo(zaloApi)
-    
-    console.log('👤 User Info:', userInfo)
-    
+    console.log('✅ Web QR Login successful!')
+    updateQrState({ status: 'success' })
     loginInProgress = false
+
+    let userInfo = getZaloUserInfo()
+    try {
+      userInfo = await populateUserInfo(zaloApi)
+    } catch (infoErr) {
+      console.error('Error populating user info:', infoErr)
+    }
     
     return NextResponse.json({ 
       success: true,
@@ -171,8 +240,14 @@ export async function POST() {
   } catch (error: any) {
     loginInProgress = false
     console.error('Login error:', error)
+    updateQrState({
+      status: 'error',
+      error: error.message || 'Thất bại khi đăng nhập'
+    })
     return NextResponse.json({ 
-      error: error.message || 'Login failed' 
+      success: false,
+      error: error.message || 'Login failed',
+      qrState: getQrState()
     }, { status: 500 })
   }
 }
@@ -183,11 +258,22 @@ export async function GET() {
     zaloApi = await loginFromSavedSession()
   }
   if (!zaloApi) {
-    return NextResponse.json({ loggedIn: false })
+    return NextResponse.json({
+      loggedIn: false,
+      qrState: getQrState()
+    })
   }
-  const userInfo = await populateUserInfo(zaloApi)
+
+  let userInfo = getZaloUserInfo()
+  if (!userInfo || userInfo.displayName === 'User') {
+    try {
+      userInfo = await populateUserInfo(zaloApi)
+    } catch (e) {}
+  }
+
   return NextResponse.json({ 
     loggedIn: true,
-    userInfo
+    userInfo,
+    qrState: getQrState()
   })
 }
