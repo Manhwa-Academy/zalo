@@ -1,7 +1,4 @@
-import clientPromise from './mongodb';
-
-const DB_NAME = 'zalobot';
-const COLLECTION_NAME = 'sessions';
+import pool from './postgres';
 
 export interface SessionData {
   key: string;
@@ -11,24 +8,21 @@ export interface SessionData {
 
 export class SessionStorage {
   /**
-   * Lưu session vào MongoDB
+   * Lưu session vào Postgres
    */
   static async save(key: string, data: any): Promise<void> {
-    try {
-      const client = await clientPromise;
-      const db = client.db(DB_NAME);
-      const collection = db.collection<SessionData>(COLLECTION_NAME);
+    if (!pool) {
+      console.warn('⚠️ [SessionStorage] Postgres not configured');
+      return;
+    }
 
-      await collection.updateOne(
-        { key },
-        {
-          $set: {
-            key,
-            data,
-            updatedAt: new Date(),
-          },
-        },
-        { upsert: true }
+    try {
+      await pool.query(
+        `INSERT INTO sessions (key, data, updated_at)
+         VALUES ($1, $2, CURRENT_TIMESTAMP)
+         ON CONFLICT (key) 
+         DO UPDATE SET data = $2, updated_at = CURRENT_TIMESTAMP`,
+        [key, JSON.stringify(data)]
       );
 
       console.log(`✅ [SessionStorage] Saved session: ${key}`);
@@ -39,19 +33,23 @@ export class SessionStorage {
   }
 
   /**
-   * Đọc session từ MongoDB
+   * Đọc session từ Postgres
    */
   static async load(key: string): Promise<any | null> {
+    if (!pool) {
+      console.warn('⚠️ [SessionStorage] Postgres not configured');
+      return null;
+    }
+
     try {
-      const client = await clientPromise;
-      const db = client.db(DB_NAME);
-      const collection = db.collection<SessionData>(COLLECTION_NAME);
+      const result = await pool.query(
+        'SELECT data FROM sessions WHERE key = $1',
+        [key]
+      );
 
-      const result = await collection.findOne({ key });
-
-      if (result) {
+      if (result.rows.length > 0) {
         console.log(`✅ [SessionStorage] Loaded session: ${key}`);
-        return result.data;
+        return result.rows[0].data;
       }
 
       console.log(`⚠️ [SessionStorage] No session found: ${key}`);
@@ -63,16 +61,16 @@ export class SessionStorage {
   }
 
   /**
-   * Xóa session khỏi MongoDB
+   * Xóa session khỏi Postgres
    */
   static async delete(key: string): Promise<void> {
+    if (!pool) {
+      console.warn('⚠️ [SessionStorage] Postgres not configured');
+      return;
+    }
+
     try {
-      const client = await clientPromise;
-      const db = client.db(DB_NAME);
-      const collection = db.collection<SessionData>(COLLECTION_NAME);
-
-      await collection.deleteOne({ key });
-
+      await pool.query('DELETE FROM sessions WHERE key = $1', [key]);
       console.log(`✅ [SessionStorage] Deleted session: ${key}`);
     } catch (error) {
       console.error('❌ [SessionStorage] Delete failed:', error);
@@ -84,13 +82,17 @@ export class SessionStorage {
    * Kiểm tra session có tồn tại không
    */
   static async exists(key: string): Promise<boolean> {
-    try {
-      const client = await clientPromise;
-      const db = client.db(DB_NAME);
-      const collection = db.collection<SessionData>(COLLECTION_NAME);
+    if (!pool) {
+      console.warn('⚠️ [SessionStorage] Postgres not configured');
+      return false;
+    }
 
-      const count = await collection.countDocuments({ key });
-      return count > 0;
+    try {
+      const result = await pool.query(
+        'SELECT COUNT(*) FROM sessions WHERE key = $1',
+        [key]
+      );
+      return parseInt(result.rows[0].count) > 0;
     } catch (error) {
       console.error('❌ [SessionStorage] Exists check failed:', error);
       return false;
