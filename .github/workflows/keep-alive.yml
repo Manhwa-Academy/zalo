@@ -12,5 +12,5 @@ jobs:
     steps:
       - name: Ping Render App
         run: |
-          curl -X GET https://YOUR-RENDER-APP.onrender.com/api/health
+          curl -X GET https://zalo-bot-vbbk.onrender.com/api/health
           echo "Pinged at $(date)"
