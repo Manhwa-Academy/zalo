@@ -262,6 +262,8 @@ export function attachListenerToApi(zaloApi: any) {
 
   zaloApi.listener.on('message', async (message: any) => {
     console.log('📨 New message received:', JSON.stringify(message, null, 2))
+    console.log('🔍 Content type:', typeof message.data?.content, 'Value:', message.data?.content)
+    console.log('🔍 Message data:', JSON.stringify(message.data, null, 2))
 
     const senderId = String(message.data?.uidFrom || message.threadId || message.from || 'Unknown')
     let senderName = message.data?.dName || message.fromName || ''
@@ -320,7 +322,8 @@ export function attachListenerToApi(zaloApi: any) {
       if (rawContent.catId || rawContent.cateId || rawContent.id || rawContent.type === 'sticker') {
         const catId = rawContent.catId || rawContent.cateId || 1
         const stkId = rawContent.id || rawContent.stickerId || rawContent.stkId || '10065'
-        const stkUrl = rawContent.url || rawContent.staticUrl || rawContent.spriteUrl || `https://stk.zaloapp.com/static/stickers/${catId}/${stkId}.png`
+        // ALWAYS use correct Zalo sticker CDN - use alternative API endpoint for better compatibility
+        const stkUrl = `https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=${stkId}&size=130&version=1`
         rawContent = JSON.stringify({
           type: 'sticker',
           id: stkId,
@@ -337,6 +340,19 @@ export function attachListenerToApi(zaloApi: any) {
           url: imgUrl,
           caption: rawContent.caption || rawContent.description || '',
         })
+      } else if (rawContent.type === 'file' || rawContent.fileName || rawContent.fileUrl || rawContent.fileSize) {
+        // File attachment - preserve file metadata
+        const fileName = rawContent.fileName || rawContent.name || 'File'
+        const fileUrl = rawContent.fileUrl || rawContent.url || rawContent.href || ''
+        const fileSize = rawContent.fileSize || rawContent.size || 0
+        rawContent = JSON.stringify({
+          type: 'file',
+          name: fileName,
+          url: fileUrl,
+          size: fileSize,
+          caption: rawContent.caption || rawContent.description || '',
+        })
+        console.log(`📎 [Listener] Parsed file attachment: ${fileName} (${fileSize} bytes)`)
       } else {
         try {
           rawContent = JSON.stringify(rawContent)

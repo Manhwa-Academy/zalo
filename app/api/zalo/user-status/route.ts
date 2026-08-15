@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     let isOnline = false
     let profileData: any = null
 
-    // 1. Try getUserInfo with both array and string ID formats
+    // Try getUserInfo to get last active time
     if (typeof zaloApi.getUserInfo === 'function') {
       try {
         let uRes: any = null
@@ -71,24 +71,8 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Try getAllFriends if lastActiveTs not found or to supplement
-    if (typeof zaloApi.getAllFriends === 'function') {
-      try {
-        const friends = await zaloApi.getAllFriends()
-        if (Array.isArray(friends)) {
-          const match = friends.find((f: any) => String(f.userId || f.uid || f.id) === String(userId))
-          if (match) {
-            const friendTs = findLastActiveInObj(match)
-            if (friendTs > lastActiveTs) {
-              lastActiveTs = friendTs
-            }
-            if (typeof match.isOnline === 'boolean') isOnline = match.isOnline
-          }
-        }
-      } catch (e: any) {
-        console.error('getAllFriends error in user-status:', e.message || e)
-      }
-    }
+    // NOTE: Removed getAllFriends() call here to prevent 429 rate limit errors
+    // Friends list should be fetched separately via /api/zalo/friends
 
     console.log(`📡 user-status for ${userId}: lastActiveTs=${lastActiveTs} (${lastActiveTs > 0 ? new Date(lastActiveTs).toISOString() : 'none'})`)
 

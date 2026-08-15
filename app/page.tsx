@@ -15,6 +15,7 @@ import AuthModal from '@/components/AuthModal'
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [isCheckingZaloLogin, setIsCheckingZaloLogin] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
@@ -85,6 +86,7 @@ export default function Home() {
     if (!isAuthenticated) return // Don't load Zalo session if not authenticated
 
     const initPage = async () => {
+      setIsCheckingZaloLogin(true)
       try {
         // 1. Fetch bot settings from server
         const settingsRes = await fetch('/api/zalo/settings')
@@ -133,6 +135,8 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to initialize page state:', error)
+      } finally {
+        setIsCheckingZaloLogin(false)
       }
     }
 
@@ -531,10 +535,26 @@ export default function Home() {
 
   if (isCheckingAuth) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-dark-100 via-dark-200 to-dark-300 flex items-center justify-center">
-        <div className="text-center p-8 bg-dark-200/50 rounded-2xl border border-dark-100 backdrop-blur">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-300 font-medium text-sm">Đang kiểm tra phiên đăng nhập...</p>
+      <main className="min-h-screen bg-gradient-to-br from-dark-100 via-dark-200 to-dark-300 flex items-center justify-center relative z-50">
+        <div className="absolute inset-0 bg-dark-100/95 backdrop-blur-xl"></div>
+        <div className="relative z-10 text-center p-8 bg-dark-200/80 rounded-2xl border border-dark-100 backdrop-blur shadow-2xl">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-200 font-semibold text-base mb-2">Đang kiểm tra phiên đăng nhập...</p>
+          <p className="text-gray-400 text-xs">Vui lòng chờ trong giây lát</p>
+        </div>
+      </main>
+    )
+  }
+
+  // Show loading screen while checking Zalo login status
+  if (isAuthenticated && isCheckingZaloLogin) {
+    return (
+      <main className="min-h-screen bg-gradient-to-br from-dark-100 via-dark-200 to-dark-300 flex items-center justify-center relative z-50">
+        <div className="absolute inset-0 bg-dark-100/95 backdrop-blur-xl"></div>
+        <div className="relative z-10 text-center p-8 bg-dark-200/80 rounded-2xl border border-dark-100 backdrop-blur shadow-2xl">
+          <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-200 font-semibold text-base mb-2">Đang tải phiên Zalo Bot...</p>
+          <p className="text-gray-400 text-xs">Đang kiểm tra kết nối với Zalo</p>
         </div>
       </main>
     )

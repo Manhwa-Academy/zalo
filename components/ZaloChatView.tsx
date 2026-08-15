@@ -72,14 +72,40 @@ function renderMessageContent(
   } else if (typeof content === 'string' && content.trim().startsWith('{') && content.trim().endsWith('}')) {
     try {
       parsedObj = JSON.parse(content)
-    } catch (e) {}
+      console.log('🔍 Parsed JSON content:', parsedObj)
+    } catch (e) {
+      console.error('❌ Failed to parse JSON:', e)
+    }
   }
 
   if (parsedObj) {
-    if (parsedObj.catId || parsedObj.cateId || parsedObj.id || parsedObj.type === 'sticker') {
+    console.log('🔍 Checking parsedObj:', {
+      hasType: !!parsedObj.type,
+      type: parsedObj.type,
+      hasCatId: !!parsedObj.catId,
+      hasId: !!parsedObj.id,
+      isSticker: parsedObj.type === 'sticker'
+    })
+    
+    if (parsedObj.type === 'sticker' || parsedObj.catId || parsedObj.cateId || (parsedObj.id && !parsedObj.type)) {
       const catId = parsedObj.catId || parsedObj.cateId || 1
       const stkId = parsedObj.id || parsedObj.stickerId || parsedObj.stkId || '10065'
-      const stickerUrl = parsedObj.url || parsedObj.staticUrl || parsedObj.spriteUrl || `https://stk.zaloapp.com/static/stickers/${catId}/${stkId}.png`
+      
+      // Use Zalo API endpoint for stickers - most reliable method
+      let stickerUrl = parsedObj.url || ''
+      
+      // Fix old broken URLs
+      if (stickerUrl.includes('stk.zaloapp.com')) {
+        stickerUrl = `https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=${stkId}&size=130&version=1`
+      }
+      
+      // If no URL provided, use API endpoint
+      if (!stickerUrl) {
+        stickerUrl = `https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=${stkId}&size=130&version=1`
+      }
+      
+      console.log('✅ Rendering sticker:', { catId, stkId, stickerUrl })
+      
       return (
         <div className="py-1">
           <img
@@ -87,9 +113,15 @@ function renderMessageContent(
             alt="Sticker Zalo"
             className="w-32 h-32 object-contain hover:scale-105 transition-transform duration-200 cursor-pointer drop-shadow-md"
             onError={(e) => {
+              console.error('❌ Sticker image failed to load:', stickerUrl)
               const target = e.target as HTMLImageElement
-              if (!target.src.includes('stk.za.zaloapp.com')) {
+              // Fallback chain: Try alternative URLs
+              if (!target.dataset.fallbackAttempt) {
+                target.dataset.fallbackAttempt = '1'
                 target.src = `https://stk.za.zaloapp.com/stickers/${catId}/${stkId}.png`
+              } else if (target.dataset.fallbackAttempt === '1') {
+                target.dataset.fallbackAttempt = '2'
+                target.src = `https://stk.za.zaloapp.com/static/stickers/${catId}/${stkId}.png`
               }
             }}
           />
@@ -1167,15 +1199,21 @@ export default function ZaloChatView({
   // 1. Load groups & friends on mount to seed conversation list
   const fetchData = useCallback(async () => {
     try {
+      console.log('🔍 [fetchData] Starting to fetch groups and friends...')
+      
       const [groupsRes, friendsRes] = await Promise.allSettled([
         fetch('/api/zalo/groups'),
         fetch('/api/zalo/friends'),
       ])
 
+      console.log('📊 [fetchData] Groups response:', groupsRes.status, groupsRes.status === 'fulfilled' ? groupsRes.value.status : 'rejected')
+      console.log('📊 [fetchData] Friends response:', friendsRes.status, friendsRes.status === 'fulfilled' ? friendsRes.value.status : 'rejected')
+
       const fetchedConvs: Conversation[] = []
 
       if (groupsRes.status === 'fulfilled' && groupsRes.value.ok) {
         const gData = await groupsRes.value.json()
+        console.log('✅ [fetchData] Groups data:', gData.groups?.length || 0, 'groups')
         if (gData.groups && Array.isArray(gData.groups)) {
           gData.groups.forEach((g: any) => {
             fetchedConvs.push({
@@ -1193,13 +1231,30 @@ export default function ZaloChatView({
 
       if (friendsRes.status === 'fulfilled' && friendsRes.value.ok) {
         const fData = await friendsRes.value.json()
+        console.log('✅ [fetchData] Friends data received:', fData)
+        
         if (fData.friends && Array.isArray(fData.friends)) {
+          console.log('👥 [fetchData] Processing', fData.friends.length, 'friends')
+          
           const mapUpdates: Record<string, string> = {}
           const fList: { id: string; name: string; avatar: string }[] = []
 
           fData.friends.forEach((f: any) => {
             const fid = String(f.id)
-            const fname = f.name || `Bạn ${f.id}`
+            let fname = f.name || ''
+            
+            // Check for special Zalo threads (My Documents, Cloud, etc.)
+            if (!fname) {
+              // Detect cloud storage / My Documents by ID
+              // Known patterns: 787248696178218846 (My Documents)
+              if (fid === '787248696178218846' || (fid.startsWith('787') && fid.length > 15)) {
+                fname = 'My Documents'
+              } else {
+                // Generic fallback
+                fname = `Người dùng ${fid.slice(-4)}`
+              }
+            }
+            
             if (f.avatar) {
               mapUpdates[fid] = f.avatar
               if (f.name) mapUpdates[f.name] = f.avatar
@@ -1216,11 +1271,17 @@ export default function ZaloChatView({
             })
           })
           setFriendsList(fList)
+          console.log('✅ [fetchData] Set friendsList:', fList.length, 'friends')
+          console.log('✅ [fetchData] Added', fData.friends.length, 'friends to fetchedConvs')
           setAvatarMap((prev) => ({ ...prev, ...mapUpdates }))
         }
       }
 
+      console.log('📋 [fetchData] Total fetchedConvs:', fetchedConvs.length, '(Groups + Friends)')
+
       setConversations((prev) => {
+        console.log('🔧 [setConversations] Previous conversations:', prev.length)
+        
         const map = new Map<string, Conversation>()
         // 1. Seed with existing conversations from logs
         prev.forEach((c) => map.set(c.threadId, c))
@@ -1242,10 +1303,15 @@ export default function ZaloChatView({
 
         const list = Array.from(map.values())
         list.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
+        
+        const userCount = list.filter(c => c.type === 'User').length
+        const groupCount = list.filter(c => c.type === 'Group').length
+        console.log('✅ [setConversations] Final conversations:', list.length, `(${userCount} Users, ${groupCount} Groups)`)
+        
         return list
       })
     } catch (e) {
-      console.error('Failed to fetch initial chat data:', e)
+      console.error('❌ [fetchData] Failed to fetch initial chat data:', e)
     }
   }, [])
 

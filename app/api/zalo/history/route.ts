@@ -80,12 +80,49 @@ export async function GET(request: Request) {
           const raw = m.data || m
           let contentStr = ''
 
-          if (typeof raw.content === 'string') {
+          // Parse content properly for stickers, images, files
+          if (raw.content && typeof raw.content === 'object') {
+            // Sticker
+            if (raw.content.catId || raw.content.cateId || raw.content.id || raw.content.type === 'sticker') {
+              const catId = raw.content.catId || raw.content.cateId || 1
+              const stkId = raw.content.id || raw.content.stickerId || raw.content.stkId || '10065'
+              // Use Zalo API endpoint for stickers instead of static CDN
+              const stkUrl = `https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=${stkId}&size=130&version=1`
+              contentStr = JSON.stringify({
+                type: 'sticker',
+                id: stkId,
+                catId: catId,
+                url: stkUrl,
+              })
+            }
+            // Image/Photo
+            else if (raw.content.type === 'image' || raw.content.photoUrl || raw.content.imageUrl || raw.content.href || raw.content.thumb || raw.content.url) {
+              const imgUrl = raw.content.url || raw.content.href || raw.content.thumb || raw.content.photoUrl || raw.content.imageUrl || ''
+              const imgName = raw.content.name || raw.content.fileName || ''
+              contentStr = JSON.stringify({
+                type: 'image',
+                name: imgName,
+                url: imgUrl,
+                caption: raw.content.caption || raw.content.description || '',
+              })
+            }
+            // File attachment
+            else if (raw.content.type === 'file' || raw.content.fileName) {
+              contentStr = JSON.stringify({
+                type: 'file',
+                name: raw.content.fileName || raw.content.name || 'File',
+                size: raw.content.fileSize || raw.content.size || 0,
+                url: raw.content.fileUrl || raw.content.url || '',
+              })
+            }
+            // Generic content
+            else {
+              contentStr = raw.content.title || raw.content.description || raw.content.msg || '[Nội dung/Media]'
+            }
+          } else if (typeof raw.content === 'string') {
             contentStr = raw.content
           } else if (typeof raw.msg === 'string') {
             contentStr = raw.msg
-          } else if (raw.content && typeof raw.content === 'object') {
-            contentStr = raw.content.title || raw.content.description || raw.content.href || '[Nội dung/Media]'
           } else {
             contentStr = '[Media/Sticker]'
           }
