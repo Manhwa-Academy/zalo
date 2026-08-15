@@ -10,6 +10,10 @@ export interface BotSettings {
   useRandomPreset: boolean
   presetMessages: string[]
   chatBackground?: string
+  aiEnabled?: boolean
+  aiPersonality?: string
+  aiMaxLength?: number
+  aiTriggerMode?: string
 }
 
 const SETTINGS_FILE = dataFilePath('.zalo-settings.json')
@@ -31,6 +35,10 @@ const DEFAULT_SETTINGS: BotSettings = {
   useRandomPreset: false,
   presetMessages: DEFAULT_PRESETS,
   chatBackground: 'default',
+  aiEnabled: false,
+  aiPersonality: 'friendly',
+  aiMaxLength: 200,
+  aiTriggerMode: 'smart',
 }
 
 export function getBotSettings(): BotSettings {

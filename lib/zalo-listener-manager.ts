@@ -178,6 +178,10 @@ async function getBotSettingsAsync() {
       blacklist: [],
       useRandomPreset: false,
       presetMessages: [],
+      aiEnabled: false,
+      aiPersonality: 'friendly',
+      aiMaxLength: 200,
+      aiTriggerMode: 'smart',
     }
   }
 }
@@ -207,8 +211,62 @@ async function shouldAutoReply(threadId: string, isGroupMsg: boolean): Promise<b
   return true
 }
 
-async function getReplyText(): Promise<string> {
+async function getReplyText(messageContent?: string, senderName?: string, threadId?: string): Promise<string> {
   const settings = await getBotSettingsAsync()
+  
+  // Check if AI is enabled
+  if (settings.aiEnabled && messageContent) {
+    const { generateAIReply, shouldUseAIReply, buildConversationHistory, detectPersonality } = await import('./ai-reply')
+    
+    // Check if we should use AI for this message
+    const aiTriggerMode = settings.aiTriggerMode || 'smart'
+    let useAI = false
+    
+    if (aiTriggerMode === 'always') {
+      useAI = true
+    } else if (aiTriggerMode === 'questions') {
+      useAI = messageContent.includes('?')
+    } else if (aiTriggerMode === 'smart') {
+      useAI = shouldUseAIReply(messageContent)
+    }
+    
+    if (useAI) {
+      try {
+        // Build conversation history if threadId provided
+        const conversationHistory = threadId 
+          ? buildConversationHistory(messageQueue, threadId, 5)
+          : []
+        
+        // Detect personality from settings or use configured
+        const personality = settings.aiPersonality || detectPersonality(settings.autoReplyMessage || '')
+        
+        // Get preset messages for style learning
+        const presetMessages = Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0
+          ? settings.presetMessages
+          : []
+        
+        const aiResult = await generateAIReply({
+          message: messageContent,
+          senderName: senderName || 'Người dùng',
+          conversationHistory,
+          personality,
+          maxLength: settings.aiMaxLength || 200,
+          presetMessages, // AI will learn style from these
+        })
+        
+        if (!aiResult.error && aiResult.reply) {
+          console.log(`🤖 [AI] Generated reply (${aiResult.tokensUsed} tokens): ${aiResult.reply.slice(0, 50)}...`)
+          return aiResult.reply
+        } else {
+          console.warn(`⚠️ [AI] Failed, fallback to normal: ${aiResult.error}`)
+        }
+      } catch (error) {
+        console.error('❌ [AI] Error generating reply:', error)
+      }
+    }
+  }
+  
+  // Fallback to preset/normal message
   if (settings.useRandomPreset && Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
     const validPresets = settings.presetMessages.filter((msg) => msg && typeof msg === 'string' && msg.trim().length > 0)
     if (validPresets.length > 0) {
@@ -458,7 +516,18 @@ export function attachListenerToApi(zaloApi: any) {
     // Perform auto-reply logic ONLY for incoming messages not sent by self
     if (!message.isSelf && await shouldAutoReply(targetThreadId, isGroupMsg)) {
       try {
-        const replyText = await getReplyText()
+        // Extract text content from message for AI
+        let textContent = rawContent
+        try {
+          const parsed = JSON.parse(rawContent)
+          if (parsed.type === 'sticker') textContent = '[sticker]'
+          else if (parsed.type === 'image') textContent = parsed.caption || '[hình ảnh]'
+          else if (parsed.type === 'file') textContent = `[file: ${parsed.name}]`
+        } catch {
+          // rawContent is plain text
+        }
+        
+        const replyText = await getReplyText(textContent, senderName, targetThreadId)
         console.log(`🤖 Auto-replying to thread ${targetThreadId} with: "${replyText}"...`)
         const threadTypeParam = isGroupMsg ? 1 : 0
         await zaloApi.sendMessage(
@@ -484,24 +553,53 @@ export function attachListenerToApi(zaloApi: any) {
     broadcastMessage(messageData)
   })
 
+  // Track reconnection state to prevent duplicate reconnects
+  let isReconnecting = false
+  let reconnectTimer: NodeJS.Timeout | null = null
+
   zaloApi.listener.on('closed', (code: any, reason: any) => {
     console.log(`🔌 Listener closed (code: ${code}, reason: ${reason})`)
     
     // ONLY reconnect if closed unexpectedly (NOT normal closure 1000)
     // Code 1000 = NORMAL_CLOSURE (intentional close, don't reconnect)
     // Code 1006 = ABNORMAL_CLOSURE (unexpected disconnect, should reconnect)
-    if (code && code !== 1000) {
+    if (code && code !== 1000 && !isReconnecting) {
       console.log(`⚠️ Abnormal closure detected (code: ${code}), will reconnect in 3s...`)
-      setTimeout(() => {
+      isReconnecting = true
+      
+      // Clear any existing reconnect timer
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      
+      reconnectTimer = setTimeout(() => {
         try {
-          if (zaloApi?.listener && !zaloApi.listener.isRunning?.()) {
-            console.log('🔄 Reconnecting listener after abnormal closure...')
-            zaloApi.listener.start({ retryOnClose: true })
+          // Check if listener is already running before attempting to start
+          if (typeof zaloApi.listener.isRunning === 'function' && zaloApi.listener.isRunning()) {
+            console.log('ℹ️ Listener is already running, no need to reconnect')
+            isReconnecting = false
+            reconnectTimer = null
+            return
           }
-        } catch (e) {
-          console.error('❌ Failed to reconnect listener:', e)
+          
+          console.log('🔄 Reconnecting listener after abnormal closure...')
+          zaloApi.listener.start({ retryOnClose: true })
+          console.log('✅ Listener reconnected successfully')
+          isReconnecting = false
+          reconnectTimer = null
+        } catch (e: any) {
+          console.error('❌ Failed to reconnect listener:', e?.message || e)
+          isReconnecting = false
+          reconnectTimer = null
+          
+          // If "Already started", listener is actually fine
+          if (e?.message?.includes('Already started') || e?.message?.includes('already')) {
+            console.log('✅ Listener is already running (caught by error), no action needed')
+          }
         }
       }, 3000)
+    } else if (isReconnecting) {
+      console.log('ℹ️ Reconnect already scheduled, skipping')
     } else {
       console.log('ℹ️ Normal closure (code 1000), no reconnect needed')
     }
@@ -510,21 +608,11 @@ export function attachListenerToApi(zaloApi: any) {
   zaloApi.listener.on('disconnected', (code: any, reason: any) => {
     console.log(`🔌 Listener disconnected (code: ${code}, reason: ${reason})`)
     
-    // ONLY reconnect if disconnected unexpectedly (NOT normal closure 1000)
+    // Don't reconnect here - let 'closed' event handle it to avoid duplicate reconnects
     if (code && code !== 1000) {
-      console.log(`⚠️ Abnormal disconnect detected (code: ${code}), will reconnect in 3s...`)
-      setTimeout(() => {
-        try {
-          if (zaloApi?.listener && !zaloApi.listener.isRunning?.()) {
-            console.log('🔄 Reconnecting listener after abnormal disconnect...')
-            zaloApi.listener.start({ retryOnClose: true })
-          }
-        } catch (e) {
-          console.error('❌ Failed to reconnect listener:', e)
-        }
-      }, 3000)
+      console.log(`ℹ️ Abnormal disconnect (code: ${code}), waiting for 'closed' event to handle reconnect`)
     } else {
-      console.log('ℹ️ Normal disconnect (code 1000), no reconnect needed')
+      console.log('ℹ️ Normal disconnect (code 1000), no action needed')
     }
   })
 

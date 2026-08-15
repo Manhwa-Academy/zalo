@@ -21,17 +21,21 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ username, password }),
       })
 
       const data = await res.json()
 
       if (data.success) {
+        console.log('✅ [Frontend] Login successful');
         onSuccess()
       } else {
+        console.log('❌ [Frontend] Login failed:', data.message);
         setError(data.message || 'Đăng nhập thất bại')
       }
     } catch (err) {
+      console.error('❌ [Frontend] Login error:', err);
       setError('Lỗi kết nối. Vui lòng thử lại!')
     } finally {
       setLoading(false)
@@ -39,7 +43,7 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
         <h2 className="text-2xl font-bold text-center mb-6 text-gray-800">
           Đăng nhập
@@ -81,15 +85,13 @@ export default function AuthModal({ onSuccess }: AuthModalProps) {
             </div>
           )}
 
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={loading}
-              className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? 'Đang xử lý...' : 'Đăng nhập'}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Đang xử lý...' : 'Đăng nhập'}
+          </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-500">

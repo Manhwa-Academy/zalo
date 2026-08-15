@@ -1,0 +1,50 @@
+feat: AI Smart Reply + Backup/Restore + Fix Multi-Device Duplication
+
+✨ New Features:
+- AI-powered smart reply with Gemini 2.5 Flash Lite
+  - 6 personalities (Friendly, Professional, Casual, Funny, Supportive, Cute)
+  - 4 trigger modes (Smart detection, Questions only, Always, Manual)
+  - Context-aware with message history
+  - 🆕 LEARNS FROM PRESET MESSAGES - AI mimics your speaking style
+  - Vietnamese support, <1s response time
+  - Auto fallback to preset messages
+- Backup & Restore system
+  - Export/Import bot settings and message logs
+  - Smart merge without duplicates
+  - Preview modal with selective restore
+  - Sync between devices
+
+🐛 Bug Fixes:
+- Fixed multi-device user duplication
+  - Check Zalo userId before creating new user
+  - Auto-merge sessions to existing user
+  - Cleaned 2 duplicate users from database
+- Fixed import errors for deployment
+  - Fixed pool import in media-cache-db.ts
+  - Fixed getUserFromSessionCookie → getCurrentUserId
+
+🎓 AI Learning Feature:
+- AI reads your preset messages and learns:
+  - Your speaking style and word choices
+  - Your favorite emojis and emoticons
+  - Your tone (formal, casual, funny, etc.)
+  - Your sentence structure
+- Creates replies that sound like YOU, not a generic AI
+- Zero config needed - automatic when preset messages exist
+- Example: If preset has "Ê~ tao đi ngủ đây 💤"
+  → AI replies "Ê~ sắp ngủ rồi đấy! Mai chat nhé 💤"
+
+📚 Documentation:
+- Added AI Smart Reply guides (EN + VI)
+- Added AI Learn From Preset guide
+- Added Backup/Restore guides (EN + VI)
+- Updated deployment checklist
+- Added quick start guide
+
+🔧 Technical:
+- Added AI settings to database schema
+- Added presetMessages parameter to generateAIReply()
+- AI system prompt includes preset messages as style reference
+- Added GEMINI_API_KEY environment variable
+- Rate limiting: 15 req/min (free tier)
+- All TypeScript errors resolved

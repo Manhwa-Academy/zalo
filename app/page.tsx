@@ -12,6 +12,11 @@ import UserProfile from '@/components/UserProfile'
 import ZaloChatView from '@/components/ZaloChatView'
 import AuthModal from '@/components/AuthModal'
 import Toast, { ToastProps } from '@/components/Toast'
+import BackupRestore from '@/components/BackupRestore'
+import AISettings from '@/components/AISettings'
+import ActiveDevices from '@/components/ActiveDevices'
+import ZaloAccountManager from '@/components/ZaloAccountManager'
+import ZaloImportModal from '@/components/ZaloImportModal'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -43,7 +48,12 @@ export default function Home() {
     'A-Anou... đừng nói cho mọi người biết nhé... tôi tin bạn đó... 🥺🌸🤍✨',
     'S-Sono... nếu có thể giúp được mọi người thì tôi rất vui... 🍀🤍✨',
   ])
+  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiPersonality, setAiPersonality] = useState('friendly')
+  const [aiMaxLength, setAiMaxLength] = useState(200)
+  const [aiTriggerMode, setAiTriggerMode] = useState('smart')
   const [qrState, setQrState] = useState<any>(null)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [mutedThreadIds, setMutedThreadIds] = useState<Set<string>>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -70,14 +80,18 @@ export default function Home() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const res = await fetch('/api/auth/check')
-        const data = await res.json()
-        setIsAuthenticated(data.authenticated)
+        console.log('🔍 [Frontend] Checking authentication...');
+        const res = await fetch('/api/auth/check', {
+          credentials: 'include', // Ensure cookies are sent
+        });
+        const data = await res.json();
+        console.log('🔍 [Frontend] Auth check result:', data);
+        setIsAuthenticated(data.authenticated);
       } catch (error) {
-        console.error('Auth check failed:', error)
-        setIsAuthenticated(false)
+        console.error('❌ [Frontend] Auth check failed:', error);
+        setIsAuthenticated(false);
       } finally {
-        setIsCheckingAuth(false)
+        setIsCheckingAuth(false);
       }
     }
     checkAuth()
@@ -114,6 +128,18 @@ export default function Home() {
           if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
             setPresetMessages(settings.presetMessages)
           }
+          if (typeof settings.aiEnabled === 'boolean') {
+            setAiEnabled(settings.aiEnabled)
+          }
+          if (settings.aiPersonality) {
+            setAiPersonality(settings.aiPersonality)
+          }
+          if (typeof settings.aiMaxLength === 'number') {
+            setAiMaxLength(settings.aiMaxLength)
+          }
+          if (settings.aiTriggerMode) {
+            setAiTriggerMode(settings.aiTriggerMode)
+          }
         }
 
         // Fetch stats from server
@@ -133,15 +159,21 @@ export default function Home() {
           setQrState(loginData.qrState)
         }
 
-        if (loginData.loggedIn) {
-          console.log('✅ Found active login session on mount')
+        // Check if already logged in from saved session
+        if (loginData.loggedIn && loginData.userInfo) {
+          console.log('✅ Already logged in with saved session:', loginData.userInfo.displayName)
           setIsLoggedIn(true)
-          if (loginData.userInfo) setUserInfo(loginData.userInfo)
-          startListener()
+          setUserInfo(loginData.userInfo)
+          
+          // Start listener for logged in user
+          setTimeout(() => startListener(), 500)
         } else {
-          // If not logged in, auto-trigger QR generation
-          console.log('ℹ️ Not logged in, auto-generating QR...')
-          handleLogin(false)
+          // Not logged in - check if need to start QR generation
+          if (!loginData.qrState || loginData.qrState.status === 'idle') {
+            console.log('🚀 Auto-starting QR generation...')
+            handleLogin(false) // Auto-trigger QR generation
+          }
+          setIsLoggedIn(false)
         }
       } catch (error) {
         console.error('Failed to initialize page state:', error)
@@ -294,8 +326,12 @@ export default function Home() {
   // Handle Logout
   const handleLogout = async () => {
     try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      
+      // Also logout from Zalo
       await fetch('/api/zalo/logout', { method: 'POST' })
       
+      setIsAuthenticated(false)
       setIsLoggedIn(false)
       setBotEnabled(false)
       setIsListening(false)
@@ -308,6 +344,44 @@ export default function Home() {
       })
     } catch (error) {
       console.error('Logout failed:', error)
+    }
+  }
+
+  // Handle Logout All Devices
+  const handleLogoutAllDevices = async () => {
+    if (!confirm('Bạn có chắc muốn đăng xuất tất cả thiết bị? Bạn sẽ cần đăng nhập lại.')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/auth/logout-all', { method: 'POST' })
+      const data = await response.json()
+      
+      if (response.ok) {
+        // Show success message
+        showToast(data.message || 'Đã đăng xuất tất cả thiết bị', 'success')
+        
+        // Also logout from Zalo
+        await fetch('/api/zalo/logout', { method: 'POST' })
+        
+        // Clear local state
+        setIsAuthenticated(false)
+        setIsLoggedIn(false)
+        setBotEnabled(false)
+        setIsListening(false)
+        setMessageLogs([])
+        setUserInfo(null)
+        setStats({
+          totalMessages: 0,
+          repliedMessages: 0,
+          activeChats: 0,
+        })
+      } else {
+        showToast(data.error || 'Lỗi khi đăng xuất', 'error')
+      }
+    } catch (error) {
+      console.error('Logout all devices failed:', error)
+      showToast('Lỗi khi đăng xuất tất cả thiết bị', 'error')
     }
   }
 
@@ -443,6 +517,10 @@ export default function Home() {
     whitelist: string[]
     useRandomPreset: boolean
     presetMessages: string[]
+    aiEnabled: boolean
+    aiPersonality: string
+    aiMaxLength: number
+    aiTriggerMode: string
   }>) => {
     try {
       await fetch('/api/zalo/settings', {
@@ -455,6 +533,10 @@ export default function Home() {
           whitelist: updates.whitelist ?? whitelist,
           useRandomPreset: updates.useRandomPreset ?? useRandomPreset,
           presetMessages: updates.presetMessages ?? presetMessages,
+          aiEnabled: updates.aiEnabled ?? aiEnabled,
+          aiPersonality: updates.aiPersonality ?? aiPersonality,
+          aiMaxLength: updates.aiMaxLength ?? aiMaxLength,
+          aiTriggerMode: updates.aiTriggerMode ?? aiTriggerMode,
         }),
       })
     } catch (error) {
@@ -502,6 +584,27 @@ export default function Home() {
   const handlePresetMessagesChange = async (list: string[]) => {
     setPresetMessages(list)
     await syncSettings({ presetMessages: list })
+  }
+  
+  // AI Settings Handlers
+  const handleAIEnabledChange = async (enabled: boolean) => {
+    setAiEnabled(enabled)
+    await syncSettings({ aiEnabled: enabled })
+  }
+  
+  const handleAIPersonalityChange = async (personality: string) => {
+    setAiPersonality(personality)
+    await syncSettings({ aiPersonality: personality })
+  }
+  
+  const handleAIMaxLengthChange = async (length: number) => {
+    setAiMaxLength(length)
+    await syncSettings({ aiMaxLength: length })
+  }
+  
+  const handleAITriggerModeChange = async (mode: string) => {
+    setAiTriggerMode(mode)
+    await syncSettings({ aiTriggerMode: mode })
   }
   
   // Quick actions
@@ -612,9 +715,13 @@ export default function Home() {
 
   return (
     <main className="h-screen max-h-screen bg-gradient-to-br from-dark-100 via-dark-200 to-dark-300 overflow-hidden flex flex-col">
-      <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-2 max-w-7xl flex-1 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex-shrink-0">
-          <Header userInfo={userInfo} onLogout={handleLogout} />
+      <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-2 max-w-7xl flex-1 flex flex-col min-h-0">
+        <div className="flex-shrink-0 relative z-[100]">
+          <Header 
+            userInfo={userInfo} 
+            onLogout={handleLogout}
+            onLogoutAllDevices={handleLogoutAllDevices}
+          />
         </div>
         
         {!isLoggedIn ? (
@@ -622,6 +729,7 @@ export default function Home() {
             isLoading={isLoading}
             qrState={qrState}
             onLogin={handleLogin}
+            onImportAccount={() => setShowImportModal(true)}
           />
         ) : (
           <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-slideIn">
@@ -716,10 +824,44 @@ export default function Home() {
                   onPresetMessagesChange={handlePresetMessagesChange}
                 />
                 
+                <AISettings
+                  aiEnabled={aiEnabled}
+                  aiPersonality={aiPersonality}
+                  aiMaxLength={aiMaxLength}
+                  aiTriggerMode={aiTriggerMode}
+                  onAIEnabledChange={handleAIEnabledChange}
+                  onAIPersonalityChange={handleAIPersonalityChange}
+                  onAIMaxLengthChange={handleAIMaxLengthChange}
+                  onAITriggerModeChange={handleAITriggerModeChange}
+                />
+                
+                {/* Zalo Account Import/Export */}
+                <ZaloAccountManager
+                  onImportSuccess={() => {
+                    showToast('Đã nhập tài khoản Zalo thành công!', 'success')
+                    // Reload to update UI with new session
+                    setTimeout(() => window.location.reload(), 2000)
+                  }}
+                />
+                
+                {/* Active Devices Management */}
+                <ActiveDevices
+                  onLogoutDevice={(deviceId) => {
+                    console.log('Device logged out:', deviceId)
+                    showToast('Thiết bị đã được đăng xuất', 'success')
+                  }}
+                  onLogoutAllDevices={handleLogoutAllDevices}
+                />
+                
                 <QuickActions
                   onResetStats={handleResetStats}
                   onExportLogs={handleExportLogs}
                   onClearLogs={handleClearLogs}
+                />
+                
+                <BackupRestore
+                  onBackupComplete={() => showToast('Đã xuất backup thành công!', 'success')}
+                  onRestoreComplete={() => showToast('Đã khôi phục backup thành công!', 'success')}
                 />
                 
                 <MessageLogs logs={messageLogs} />
@@ -736,6 +878,17 @@ export default function Home() {
           type={toast.type}
           duration={toast.duration}
           onClose={() => setToast(null)}
+        />
+      )}
+
+      {/* Zalo Import Modal */}
+      {showImportModal && (
+        <ZaloImportModal
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            setShowImportModal(false)
+            window.location.reload()
+          }}
         />
       )}
     </main>

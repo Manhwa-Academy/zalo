@@ -236,6 +236,21 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
+  // Check if we're in QR generation flow
+  const qrState = getQrState()
+  const isQRFlow = qrState && ['generating', 'qr_ready', 'scanned'].includes(qrState.status)
+  
+  // If in QR flow, don't check for existing session
+  // Force user to complete QR scan or import
+  if (isQRFlow) {
+    console.log('📱 [Login GET] In QR flow, not checking existing session')
+    return NextResponse.json({
+      loggedIn: false,
+      qrState: qrState
+    })
+  }
+  
+  // Otherwise, check for existing session
   let zaloApi = await getCurrentZaloApi()
   if (!zaloApi) {
     zaloApi = await loadCurrentZaloSession()
@@ -244,7 +259,7 @@ export async function GET() {
   if (!zaloApi) {
     return NextResponse.json({
       loggedIn: false,
-      qrState: getQrState()
+      qrState: qrState
     })
   }
 

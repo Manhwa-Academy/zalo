@@ -1857,12 +1857,17 @@ export default function ZaloChatView({
       // 1. Exact string match + same sender + within 15 seconds
       if (isSameContent && isSameSender && (timeDiff < 15000 || t1 === 0 || t2 === 0)) return true
 
-      // 2. Both are self-sent image messages within 15 seconds -> merge temp local image with Zalo listener/history response
+      // 2. Check if both have msgId - if different msgIds, they are different messages (don't merge)
+      if (existing.msgId && msg.msgId && String(existing.msgId) !== String(msg.msgId)) {
+        return false // Different messages, don't merge
+      }
+
+      // 3. Both are self-sent image messages within 15 seconds -> merge temp local image with Zalo listener/history response
       const isImgA = existingText.includes('"type":"image"') || existingText.includes('[Hình ảnh]') || existingText.includes('"href"') || existingText.includes('"thumb"')
       const isImgB = msgText.includes('"type":"image"') || msgText.includes('[Hình ảnh]') || msgText.includes('"href"') || msgText.includes('"thumb"')
       if (isSameSender && existing.isSelf && isImgA && isImgB && (timeDiff < 15000 || t1 === 0 || t2 === 0)) return true
 
-      // 3. Both are self-sent file messages within 15 seconds
+      // 4. Both are self-sent file messages within 15 seconds
       const isFileA = existingText.includes('"type":"file"') || existingText.includes('[Tập tin]')
       const isFileB = msgText.includes('"type":"file"') || msgText.includes('[Tập tin]')
       if (isSameSender && existing.isSelf && isFileA && isFileB && (timeDiff < 15000 || t1 === 0 || t2 === 0)) return true

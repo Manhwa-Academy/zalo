@@ -5,39 +5,40 @@ interface LoginSectionProps {
   isLoading: boolean
   qrState?: QrState | null
   onLogin: (force?: boolean) => void
+  onImportAccount?: () => void
 }
 
-export default function LoginSection({ isLoading, qrState, onLogin }: LoginSectionProps) {
+export default function LoginSection({ isLoading, qrState, onLogin, onImportAccount }: LoginSectionProps) {
   const status = qrState?.status || 'idle'
   const qrImage = qrState?.qrImage
   const scannedUser = qrState?.scannedUser
 
   return (
-    <div className="card max-w-lg mx-auto text-center animate-slideIn space-y-6">
+    <div className="card max-w-lg mx-auto text-center animate-slideIn space-y-4 overflow-y-auto max-h-[85vh]">
       {/* Header Avatar / Icon */}
       <img 
         src="/aris.png" 
         alt="Logo Aris" 
-        className="w-20 h-20 mx-auto rounded-3xl object-cover shadow-lg border border-white/10"
+        className="w-16 h-16 mx-auto rounded-3xl object-cover shadow-lg border border-white/10"
       />
       
       <div>
-        <h2 className="text-2xl font-bold tracking-tight">Đăng nhập Zalo Bot</h2>
-        <p className="text-sm text-gray-400 mt-1">
-          Quét mã QR trực tiếp bên dưới bằng ứng dụng Zalo trên điện thoại
+        <h2 className="text-xl font-bold tracking-tight">Đăng nhập Zalo Bot</h2>
+        <p className="text-xs text-gray-400 mt-1">
+          Quét mã QR trực tiếp bằng ứng dụng Zalo trên điện thoại
         </p>
       </div>
 
-      {/* Main Display Area */}
-      <div className="min-h-[280px] flex flex-col items-center justify-center p-6 bg-dark-300/60 rounded-2xl border border-dark-200">
-        {/* State 1: QR Ready to Scan */}
+      {/* Main Display Area - Compact */}
+      <div className="min-h-[240px] flex flex-col items-center justify-center p-4 bg-dark-300/60 rounded-2xl border border-dark-200">
+        {/* State 1: QR Ready to Scan - Compact */}
         {qrImage && (status === 'qr_ready' || status === 'generating') && (
-          <div className="space-y-4 animate-slideIn">
-            <div className="relative inline-block p-3 bg-white rounded-2xl shadow-2xl border-4 border-sky-500/30">
+          <div className="space-y-3 animate-slideIn">
+            <div className="relative inline-block p-2 bg-white rounded-xl shadow-xl border-2 border-sky-500/30">
               <img
                 src={qrImage}
                 alt="Mã QR Đăng nhập Zalo"
-                className="w-56 h-56 object-contain rounded-lg"
+                className="w-48 h-48 object-contain rounded-lg"
               />
               {status === 'generating' && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-lg flex items-center justify-center">
@@ -49,10 +50,10 @@ export default function LoginSection({ isLoading, qrState, onLogin }: LoginSecti
             <div className="space-y-1">
               <p className="text-xs font-semibold text-sky-400 flex items-center justify-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping"></span>
-                📱 Mở Zalo ➔ Chọn icon [Quét mã QR]
+                📱 Mở Zalo ➔ Quét mã QR
               </p>
-              <p className="text-[11px] text-gray-400">
-                Mã QR hiển thị trực tiếp trên web • Không cần kiểm tra terminal
+              <p className="text-[10px] text-gray-400">
+                Mã QR hiển thị trực tiếp trên web
               </p>
             </div>
           </div>
@@ -95,17 +96,17 @@ export default function LoginSection({ isLoading, qrState, onLogin }: LoginSecti
           </div>
         )}
 
-        {/* State 4: Expired or Error */}
+        {/* State 4: Expired or Error - Show clearly */}
         {(status === 'expired' || status === 'declined' || status === 'error') && (
-          <div className="space-y-4 py-4 max-w-xs">
-            <div className="w-14 h-14 bg-danger/20 border border-danger/40 text-danger rounded-full flex items-center justify-center mx-auto text-2xl">
+          <div className="space-y-3 py-4 max-w-xs">
+            <div className="w-12 h-12 bg-danger/20 border border-danger/40 text-danger rounded-full flex items-center justify-center mx-auto text-xl">
               ⚠️
             </div>
             <div>
               <h4 className="text-sm font-bold text-danger">
-                {status === 'expired' && 'Mã QR đã hết hạn!'}
-                {status === 'declined' && 'Đã bị từ chối đăng nhập!'}
-                {status === 'error' && 'Đăng nhập không thành công'}
+                {status === 'expired' && '⏰ Mã QR đã hết hạn!'}
+                {status === 'declined' && '❌ Đã bị từ chối đăng nhập!'}
+                {status === 'error' && '❌ Đăng nhập không thành công'}
               </h4>
               <p className="text-xs text-gray-400 mt-1">
                 {qrState?.error || 'Vui lòng bấm nút bên dưới để tạo mã QR mới.'}
@@ -113,7 +114,7 @@ export default function LoginSection({ isLoading, qrState, onLogin }: LoginSecti
             </div>
             <button
               onClick={() => onLogin(true)}
-              className="btn btn-primary text-xs py-2 px-6 w-full shadow-lg"
+              className="btn btn-primary text-sm py-2 px-6 w-full shadow-lg"
             >
               🔄 Tạo mã QR mới
             </button>
@@ -140,8 +141,24 @@ export default function LoginSection({ isLoading, qrState, onLogin }: LoginSecti
       </div>
 
       {/* Footer Info */}
-      <div className="pt-4 border-t border-dark-300">
-        <p className="text-[11px] text-gray-500">
+      <div className="pt-4 border-t border-dark-300 space-y-3">
+        {/* Import Account Button - More Prominent */}
+        {onImportAccount && (
+          <div className="space-y-2">
+            <button
+              onClick={onImportAccount}
+              className="w-full btn bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm py-3 px-4 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
+            >
+              <span className="text-lg">📥</span>
+              <span className="font-semibold">Nhập tài khoản Zalo đã xuất</span>
+            </button>
+            <p className="text-xs text-center text-gray-400">
+              Bỏ qua bước quét QR nếu đã có file backup
+            </p>
+          </div>
+        )}
+        
+        <p className="text-[11px] text-gray-500 text-center">
           🔒 Mã QR được tạo trực tiếp từ Zalo API và hiển thị an toàn trên giao diện Web.
         </p>
       </div>

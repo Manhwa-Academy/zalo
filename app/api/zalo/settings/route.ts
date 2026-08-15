@@ -15,6 +15,10 @@ export async function GET() {
       blacklist: Array.isArray(settings.blacklist) ? settings.blacklist : [],
       useRandomPreset: settings.useRandomPreset ?? false,
       presetMessages: Array.isArray(settings.presetMessages) ? settings.presetMessages : [],
+      aiEnabled: settings.aiEnabled ?? false,
+      aiPersonality: settings.aiPersonality || 'friendly',
+      aiMaxLength: settings.aiMaxLength || 200,
+      aiTriggerMode: settings.aiTriggerMode || 'smart',
     })
   } catch (error: any) {
     console.error('GET /api/zalo/settings error:', error)
@@ -44,6 +48,10 @@ export async function POST(request: Request) {
       blacklist: Array.isArray(settings.blacklist) ? settings.blacklist : [],
       useRandomPreset: settings.useRandomPreset ?? false,
       presetMessages: Array.isArray(settings.presetMessages) ? settings.presetMessages : [],
+      aiEnabled: settings.aiEnabled ?? false,
+      aiPersonality: settings.aiPersonality || 'friendly',
+      aiMaxLength: settings.aiMaxLength || 200,
+      aiTriggerMode: settings.aiTriggerMode || 'smart',
     })
   } catch (error: any) {
     console.error('POST /api/zalo/settings error:', error)

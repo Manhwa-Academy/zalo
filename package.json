@@ -10,14 +10,28 @@
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron:build": "next build && electron-builder",
-    "package": "electron-builder build --win --publish never"
+    "package": "electron-builder build --win --publish never",
+    "migrate:auth": "node database/migrate-node.js",
+    "migrate:auth:win": "database\\migrate-auth-sessions.bat",
+    "migrate:auth:unix": "bash database/migrate-auth-sessions.sh",
+    "migrate:auth:node": "node database/migrate-node.js",
+    "create-admin": "npx tsx database/create-first-user.ts",
+    "create-user:cli": "npx tsx database/create-user-cli.ts",
+    "reset-admin": "node database/reset-admin.js",
+    "check-db": "node database/check-tables.js",
+    "list-users": "node database/list-users.js",
+    "list-sessions": "node database/list-sessions.js",
+    "deploy:setup": "bash scripts/deploy-setup.sh",
+    "deploy:setup:win": "scripts\\deploy-setup.bat"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/node": "^20.0.0",
     "@types/pg": "^8.11.0",
     "@types/react": "^18.3.0",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.0",
+    "bcryptjs": "^2.4.3",
     "date-fns": "^3.0.0",
     "next": "^14.2.0",
     "pg": "^8.11.0",
@@ -30,9 +44,11 @@
     "zca-js": "^2.1.2"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "concurrently": "^8.2.0",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.0",
+    "tsx": "^4.7.0",
     "wait-on": "^7.2.0"
   },
   "build": {

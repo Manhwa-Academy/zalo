@@ -29,6 +29,10 @@ export interface BotSettings {
   blacklist?: string[];
   useRandomPreset?: boolean;
   presetMessages?: string[];
+  aiEnabled?: boolean; // NEW: Enable AI-powered replies
+  aiPersonality?: string; // NEW: AI personality (friendly, professional, casual, funny, supportive, cute)
+  aiMaxLength?: number; // NEW: Max AI response length
+  aiTriggerMode?: string; // NEW: 'always' | 'questions' | 'smart' | 'manual'
   settings: any;
   updatedAt: Date;
 }
@@ -261,6 +265,10 @@ export class UserManager {
         blacklist: parsedSettings.blacklist || [],
         useRandomPreset: parsedSettings.useRandomPreset || false,
         presetMessages: parsedSettings.presetMessages || [],
+        aiEnabled: parsedSettings.aiEnabled || false,
+        aiPersonality: parsedSettings.aiPersonality || 'friendly',
+        aiMaxLength: parsedSettings.aiMaxLength || 200,
+        aiTriggerMode: parsedSettings.aiTriggerMode || 'smart',
         settings: row.settings,
         updatedAt: row.updated_at,
       };
@@ -313,6 +321,10 @@ export class UserManager {
       if (updates.blacklist !== undefined) newExtraFields.blacklist = updates.blacklist;
       if (updates.useRandomPreset !== undefined) newExtraFields.useRandomPreset = updates.useRandomPreset;
       if (updates.presetMessages !== undefined) newExtraFields.presetMessages = updates.presetMessages;
+      if (updates.aiEnabled !== undefined) newExtraFields.aiEnabled = updates.aiEnabled;
+      if (updates.aiPersonality !== undefined) newExtraFields.aiPersonality = updates.aiPersonality;
+      if (updates.aiMaxLength !== undefined) newExtraFields.aiMaxLength = updates.aiMaxLength;
+      if (updates.aiTriggerMode !== undefined) newExtraFields.aiTriggerMode = updates.aiTriggerMode;
       
       // Merge existing JSONB settings with new updates
       const mergedSettings = { ...existingSettings, ...newExtraFields };

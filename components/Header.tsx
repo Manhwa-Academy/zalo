@@ -1,17 +1,31 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 
 interface HeaderProps {
   userInfo: any
   onLogout: () => void
+  onLogoutAllDevices?: () => void
 }
 
-export default function Header({ userInfo, onLogout }: HeaderProps) {
+export default function Header({ userInfo, onLogout, onLogoutAllDevices }: HeaderProps) {
   const [notifPermission, setNotifPermission] = useState<string>('default')
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission)
     }
+  }, [])
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const requestNotifPermission = async () => {
@@ -27,6 +41,24 @@ export default function Header({ userInfo, onLogout }: HeaderProps) {
         } catch (e) {}
       }
     }
+  }
+
+  const handleLogout = () => {
+    setShowUserMenu(false)
+    onLogout()
+  }
+
+  const handleLogoutAllDevices = () => {
+    setShowUserMenu(false)
+    if (onLogoutAllDevices) {
+      onLogoutAllDevices()
+    }
+  }
+
+  const handleSettings = () => {
+    setShowUserMenu(false)
+    // Navigate to settings - can be extended later
+    alert('Tính năng cài đặt đang được phát triển')
   }
 
   return (
@@ -66,16 +98,62 @@ export default function Header({ userInfo, onLogout }: HeaderProps) {
             </span>
           </button>
 
-          <div className="text-left sm:text-right">
-            <p className="font-medium text-xs truncate max-w-[120px]">{userInfo.displayName || 'User'}</p>
-            <p className="text-[10px] text-gray-400">{userInfo.phoneNumber || 'N/A'}</p>
+          {/* User Menu Dropdown */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-200/80 border border-white/10 hover:border-primary/40 transition-all"
+            >
+              <div className="text-left">
+                <p className="font-medium text-xs truncate max-w-[120px]">{userInfo.displayName || 'User'}</p>
+                <p className="text-[10px] text-gray-400">{userInfo.phoneNumber || 'N/A'}</p>
+              </div>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu - Fixed z-index and positioning */}
+            {showUserMenu && (
+              <div className="absolute right-0 top-full mt-2 w-56 bg-dark-200/98 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-slideIn">
+                <div className="py-1">
+                  {/* Settings */}
+                  <button
+                    onClick={handleSettings}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
+                  >
+                    <span className="text-lg">⚙️</span>
+                    <span>Cài đặt</span>
+                  </button>
+
+                  <div className="h-px bg-white/10 my-1"></div>
+
+                  {/* Logout This Device */}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
+                  >
+                    <span className="text-lg">🚪</span>
+                    <span>Đăng xuất thiết bị này</span>
+                  </button>
+
+                  {/* Logout All Devices */}
+                  <button
+                    onClick={handleLogoutAllDevices}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-red-500/10 transition-colors flex items-center gap-3 text-red-400 hover:text-red-300"
+                  >
+                    <span className="text-lg">🚫</span>
+                    <span>Đăng xuất tất cả thiết bị</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <button
-            onClick={onLogout}
-            className="btn btn-danger text-xs py-1 px-2.5"
-          >
-            Đăng xuất
-          </button>
         </div>
       )}
     </header>
