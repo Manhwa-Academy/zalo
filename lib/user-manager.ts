@@ -98,10 +98,12 @@ export class UserManager {
         };
       }
 
-      // Tạo user mới
+      // Tạo user mới với ON CONFLICT để tránh race condition
       result = await pool.query(
         `INSERT INTO users (session_id) 
          VALUES ($1) 
+         ON CONFLICT (session_id) 
+         DO UPDATE SET last_active = CURRENT_TIMESTAMP
          RETURNING *`,
         [sessionId]
       );
