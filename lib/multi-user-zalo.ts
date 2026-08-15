@@ -16,16 +16,35 @@ const zaloUserInfos = new Map<string, any>();
  */
 export async function getCurrentUserId(): Promise<string> {
   const sessionId = getSessionId();
+  console.log(`🔍 [MultiUser] Getting user for session: ${sessionId}`);
   const user = await UserManager.getOrCreateUser(sessionId);
+  console.log(`👤 [MultiUser] User ID: ${user.id}`);
   return user.id;
 }
 
 /**
  * Lấy Zalo API instance của user hiện tại
+ * Nếu chưa có trong memory → Load từ DB
  */
 export async function getCurrentZaloApi(): Promise<any | null> {
   const userId = await getCurrentUserId();
-  return zaloInstances.get(userId) || null;
+  let api = zaloInstances.get(userId);
+  
+  console.log(`🔍 [MultiUser] Getting zaloApi for user [${userId}]: ${api ? 'FOUND IN MEMORY' : 'NOT IN MEMORY'}`);
+  console.log(`🔍 [MultiUser] Current map size: ${zaloInstances.size}, Keys:`, Array.from(zaloInstances.keys()));
+  
+  // Nếu không có trong memory → Load từ DB
+  if (!api) {
+    console.log(`📦 [MultiUser] zaloApi not in memory, loading from DB...`);
+    api = await loadCurrentZaloSession();
+    if (api) {
+      console.log(`✅ [MultiUser] Loaded zaloApi from DB for user [${userId}]`);
+    } else {
+      console.log(`❌ [MultiUser] No session found in DB for user [${userId}]`);
+    }
+  }
+  
+  return api || null;
 }
 
 /**
@@ -33,6 +52,7 @@ export async function getCurrentZaloApi(): Promise<any | null> {
  */
 export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
   const userId = await getCurrentUserId();
+  console.log(`💾 [MultiUser] Saving zaloApi for user: ${userId}`);
   zaloInstances.set(userId, zaloApi);
   
   // Lưu session vào DB
@@ -50,6 +70,7 @@ export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
         language: ctx.language || 'vi',
       };
       await UserManager.saveZaloSession(userId, credentials);
+      console.log(`✅ [MultiUser] Saved session to DB for user: ${userId}`);
     }
   } catch (error) {
     console.error('Failed to save session to DB:', error);
@@ -110,9 +131,11 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
  */
 export async function loadCurrentZaloSession(): Promise<any | null> {
   const userId = await getCurrentUserId();
+  console.log(`📦 [MultiUser] Loading session for user: [${userId}]`);
   const saved = await UserManager.getZaloSession(userId);
   
   if (!saved || !saved.sessionData) {
+    console.log(`⚠️ [MultiUser] No saved session found for user: [${userId}]`);
     return null;
   }
   
@@ -123,7 +146,9 @@ export async function loadCurrentZaloSession(): Promise<any | null> {
     const zalo = new Zalo({ selfListen: true, imageMetadataGetter });
     const zaloApi = await zalo.login(saved.sessionData);
     
+    console.log(`💾 [MultiUser] Storing zaloApi in map for user: [${userId}]`);
     zaloInstances.set(userId, zaloApi);
+    console.log(`✅ [MultiUser] Map size after set: ${zaloInstances.size}`);
     
     if (saved.userInfo) {
       zaloUserInfos.set(userId, saved.userInfo);

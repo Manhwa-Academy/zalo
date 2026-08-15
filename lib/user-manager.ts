@@ -24,6 +24,11 @@ export interface BotSettings {
   enabled: boolean;
   autoReplyMessage: string;
   replyDelay: number;
+  replyScope?: string; // 'all' | 'user_only' | 'group_only' | 'whitelist'
+  whitelist?: string[];
+  blacklist?: string[];
+  useRandomPreset?: boolean;
+  presetMessages?: string[];
   settings: any;
   updatedAt: Date;
 }
@@ -164,6 +169,11 @@ export class UserManager {
         enabled: false,
         autoReplyMessage: 'Xin chào! Đây là tin nhắn tự động.',
         replyDelay: 2000,
+        replyScope: 'all',
+        whitelist: [],
+        blacklist: [],
+        useRandomPreset: false,
+        presetMessages: [],
         settings: {},
         updatedAt: new Date(),
       };
@@ -186,12 +196,21 @@ export class UserManager {
       }
 
       const row = result.rows[0];
+      
+      // Parse settings from JSONB if exists
+      const parsedSettings = row.settings || {};
+      
       return {
         id: row.id,
         userId: row.user_id,
         enabled: row.enabled,
         autoReplyMessage: row.auto_reply_message,
         replyDelay: row.reply_delay,
+        replyScope: parsedSettings.replyScope || 'all',
+        whitelist: parsedSettings.whitelist || [],
+        blacklist: parsedSettings.blacklist || [],
+        useRandomPreset: parsedSettings.useRandomPreset || false,
+        presetMessages: parsedSettings.presetMessages || [],
         settings: row.settings,
         updatedAt: row.updated_at,
       };

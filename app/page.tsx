@@ -142,57 +142,55 @@ export default function Home() {
   // Handle Login via Web QR API with Polling
   const handleLogin = async (force: boolean = false) => {
     setIsLoading(true)
+    
     try {
-      // 1. Start QR generation on backend
+      // Start QR generation on backend (fire and forget)
       fetch('/api/zalo/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success && data.userInfo) {
-            setIsLoggedIn(true)
-            setUserInfo(data.userInfo)
-            setIsLoading(false)
-            startListener()
-          }
-        })
-        .catch((err) => {
-          console.error('Login POST error:', err)
-        })
+      }).catch(err => console.error('Login POST error:', err))
 
-      // 2. Poll for QR status every second
+      // Poll GET endpoint every 1 second to check status
       const pollInterval = setInterval(async () => {
         try {
           const res = await fetch('/api/zalo/login')
           const data = await res.json()
 
+          // Update QR state
           if (data.qrState) {
             setQrState(data.qrState)
+          }
 
-            if (data.qrState.status === 'success' || data.loggedIn) {
-              clearInterval(pollInterval)
-              setIsLoggedIn(true)
-              if (data.userInfo) setUserInfo(data.userInfo)
-              setIsLoading(false)
-              startListener()
-            } else if (
-              data.qrState.status === 'expired' ||
-              data.qrState.status === 'declined' ||
-              data.qrState.status === 'error'
-            ) {
-              clearInterval(pollInterval)
-              setIsLoading(false)
-            }
+          // Check if logged in successfully
+          if (data.loggedIn) {
+            console.log('✅ Login successful! Stopping poll.')
+            clearInterval(pollInterval)
+            setIsLoggedIn(true)
+            if (data.userInfo) setUserInfo(data.userInfo)
+            setIsLoading(false)
+            
+            // Start listener after successful login
+            setTimeout(() => startListener(), 1000)
+          }
+          
+          // Stop polling if error/expired/declined
+          if (data.qrState && ['error', 'expired', 'declined'].includes(data.qrState.status)) {
+            console.log(`⚠️ QR ${data.qrState.status}, stopping poll`)
+            clearInterval(pollInterval)
+            setIsLoading(false)
           }
         } catch (e) {
           console.error('Polling error:', e)
         }
-      }, 1000)
+      }, 1000) // Poll every 1 second
 
-      // Auto clear polling after 3 minutes
-      setTimeout(() => clearInterval(pollInterval), 180000)
+      // Auto-clear polling after 3 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        setIsLoading(false)
+      }, 180000)
+      
     } catch (error: any) {
       console.error('Login failed:', error)
       setIsLoading(false)

@@ -14,7 +14,10 @@ export function getSessionId(): string {
 
   if (!sessionId) {
     sessionId = generateSessionId();
+    console.log(`🆕 [SessionCookie] Generated new session ID: ${sessionId}`);
     setSessionId(sessionId);
+  } else {
+    console.log(`✅ [SessionCookie] Found existing session ID: ${sessionId}`);
   }
 
   return sessionId;
