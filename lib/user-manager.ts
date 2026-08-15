@@ -146,7 +146,6 @@ export class UserManager {
       throw error;
     }
   }
-  }
 
   /**
    * Lưu Zalo session của user
