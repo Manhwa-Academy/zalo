@@ -168,11 +168,8 @@ export default function Home() {
           // Start listener for logged in user
           setTimeout(() => startListener(), 500)
         } else {
-          // Not logged in - check if need to start QR generation
-          if (!loginData.qrState || loginData.qrState.status === 'idle') {
-            console.log('🚀 Auto-starting QR generation...')
-            handleLogin(false) // Auto-trigger QR generation
-          }
+          // Not logged in - will show LoginSection which will auto-start QR
+          console.log('ℹ️ Not logged in, showing login page...')
           setIsLoggedIn(false)
         }
       } catch (error) {

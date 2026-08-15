@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { QrState } from '@/lib/qr-state'
 
 interface LoginSectionProps {
@@ -12,6 +12,14 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
   const status = qrState?.status || 'idle'
   const qrImage = qrState?.qrImage
   const scannedUser = qrState?.scannedUser
+
+  // Auto-start QR generation when component mounts if status is idle
+  useEffect(() => {
+    if (status === 'idle' && !isLoading) {
+      console.log('🚀 [LoginSection] Auto-starting QR generation...')
+      onLogin(false)
+    }
+  }, []) // Only run once on mount
 
   return (
     <div className="card max-w-lg mx-auto text-center animate-slideIn space-y-4 overflow-y-auto max-h-[85vh]">

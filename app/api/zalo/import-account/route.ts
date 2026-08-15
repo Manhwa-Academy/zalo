@@ -147,26 +147,7 @@ export async function POST(request: Request) {
     // Populate user info
     const userInfo = await populateUserInfo(zaloApi)
     
-    // Check if this Zalo account already exists for another user
-    if (userInfo.userId && userInfo.userId !== 'Unknown') {
-      console.log(`🔍 Checking if Zalo user ${userInfo.userId} already exists...`)
-      const { UserManager } = await import('@/lib/user-manager')
-      const existingUser = await UserManager.getUserByZaloId(userInfo.userId)
-      
-      if (existingUser && existingUser.id !== userId) {
-        console.log(`✅ Found existing user ${existingUser.id} for Zalo ID ${userInfo.userId}`)
-        console.log(`🔗 Linking current session to existing user instead of creating duplicate`)
-        
-        // Link current session to existing user
-        const { getSessionId } = await import('@/lib/session-cookie')
-        const currentSessionId = getSessionId()
-        await UserManager.linkSessionToUser(currentSessionId, existingUser.id)
-        
-        console.log(`✅ Successfully merged sessions. New session will use user ${existingUser.id}`)
-      }
-    }
-
-    // Save to current session WITH hash in userInfo
+    // Save to current session WITH hash in userInfo (no merging - allow multiple devices)
     const userInfoWithHash = {
       ...userInfo,
       _importHash: credentialsHash, // Store hash to detect re-import
