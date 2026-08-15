@@ -4,13 +4,17 @@ import { getCurrentBotSettings, updateCurrentBotSettings } from '@/lib/multi-use
 export async function GET() {
   try {
     const settings = await getCurrentBotSettings()
+    
+    // Return full settings object for frontend compatibility
     return NextResponse.json({
-      success: true,
-      settings: {
-        enabled: settings.enabled,
-        autoReplyMessage: settings.autoReplyMessage,
-        replyDelay: settings.replyDelay,
-      }
+      enabled: settings.enabled ?? false,
+      autoReplyMessage: settings.autoReplyMessage || 'Xin chào! Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể. 🙏',
+      replyDelay: settings.replyDelay || 2000,
+      replyScope: settings.replyScope || 'all',
+      whitelist: Array.isArray(settings.whitelist) ? settings.whitelist : [],
+      blacklist: Array.isArray(settings.blacklist) ? settings.blacklist : [],
+      useRandomPreset: settings.useRandomPreset ?? false,
+      presetMessages: Array.isArray(settings.presetMessages) ? settings.presetMessages : [],
     })
   } catch (error: any) {
     console.error('GET /api/zalo/settings error:', error)
@@ -29,13 +33,17 @@ export async function POST(request: Request) {
     
     console.log('⚙️ Updated bot settings for current user:', settings)
     
+    // Return full settings object for frontend compatibility
     return NextResponse.json({ 
-      success: true, 
-      settings: {
-        enabled: settings.enabled,
-        autoReplyMessage: settings.autoReplyMessage,
-        replyDelay: settings.replyDelay,
-      }
+      success: true,
+      enabled: settings.enabled ?? false,
+      autoReplyMessage: settings.autoReplyMessage || 'Xin chào! Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể. 🙏',
+      replyDelay: settings.replyDelay || 2000,
+      replyScope: settings.replyScope || 'all',
+      whitelist: Array.isArray(settings.whitelist) ? settings.whitelist : [],
+      blacklist: Array.isArray(settings.blacklist) ? settings.blacklist : [],
+      useRandomPreset: settings.useRandomPreset ?? false,
+      presetMessages: Array.isArray(settings.presetMessages) ? settings.presetMessages : [],
     })
   } catch (error: any) {
     console.error('POST /api/zalo/settings error:', error)

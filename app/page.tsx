@@ -92,7 +92,11 @@ export default function Home() {
         const settingsRes = await fetch('/api/zalo/settings')
         if (settingsRes.ok) {
           const settings = await settingsRes.json()
+          console.log('📋 Loaded bot settings from server:', settings)
+          
           setBotEnabled(settings.enabled ?? false)
+          console.log('🔧 Bot enabled state set to:', settings.enabled ?? false)
+          
           if (settings.autoReplyMessage) {
             setAutoReplyMessage(settings.autoReplyMessage)
           }
@@ -221,29 +225,42 @@ export default function Home() {
           setIsListening(true)
           console.log('✅ Listener started successfully')
           
-          // Connect to SSE for real-time messages
-          const eventSource = new EventSource('/api/zalo/listener')
-          
-          eventSource.onmessage = (event) => {
-            try {
-              const message = JSON.parse(event.data)
-              if (message.type === 'connected') {
-                console.log('Connected to message stream')
-                return
+          // Connect to SSE for real-time messages with auto-reconnect
+          const connectSSE = () => {
+            const eventSource = new EventSource('/api/zalo/listener')
+            
+            eventSource.onmessage = (event) => {
+              try {
+                const message = JSON.parse(event.data)
+                if (message.type === 'connected') {
+                  console.log('✅ Connected to message stream')
+                  setIsListening(true)
+                  return
+                }
+                
+                handleNewMessage(message)
+              } catch (e) {
+                console.error('Failed to parse message:', e)
               }
-              
-              handleNewMessage(message)
-            } catch (e) {
-              console.error('Failed to parse message:', e)
             }
+            
+            eventSource.onerror = (error) => {
+              console.error('❌ SSE connection error, reconnecting in 3s...', error)
+              setIsListening(false)
+              eventSource.close()
+              
+              // Auto-reconnect after 3 seconds
+              setTimeout(() => {
+                console.log('🔄 Reconnecting SSE...')
+                connectSSE()
+              }, 3000)
+            }
+            
+            // Store reference for cleanup
+            return eventSource
           }
           
-          eventSource.onerror = () => {
-            console.error('SSE connection error')
-            setIsListening(false)
-            eventSource.close()
-          }
-          
+          connectSSE()
           break // Success, exit retry loop
         }
         

@@ -51,10 +51,15 @@ export async function GET() {
     attachListenerToApi(zaloApi)
   }
 
+  let clientId: number | null = null
+
   const stream = new ReadableStream({
     start(controller) {
-      const client = { id: Date.now(), controller }
+      clientId = Date.now()
+      const client = { id: clientId, controller }
       sseClients.push(client)
+
+      console.log(`📡 [SSE] New client connected (ID: ${clientId}), total clients: ${sseClients.length}`)
 
       // Send initial connection message
       controller.enqueue('data: {"type":"connected"}\n\n')
@@ -72,11 +77,24 @@ export async function GET() {
           controller.enqueue(': keepalive\n\n')
         } catch (e) {
           clearInterval(interval)
-          const index = sseClients.indexOf(client)
-          if (index > -1) sseClients.splice(index, 1)
+          const index = sseClients.findIndex(c => c.id === clientId)
+          if (index > -1) {
+            sseClients.splice(index, 1)
+            console.log(`🔌 [SSE] Client disconnected (ID: ${clientId}), remaining clients: ${sseClients.length}`)
+          }
         }
       }, 15000)
     },
+    cancel() {
+      // Clean up when client disconnects
+      if (clientId !== null) {
+        const index = sseClients.findIndex(c => c.id === clientId)
+        if (index > -1) {
+          sseClients.splice(index, 1)
+          console.log(`🔌 [SSE] Client cancelled (ID: ${clientId}), remaining clients: ${sseClients.length}`)
+        }
+      }
+    }
   })
 
   return new Response(stream, {

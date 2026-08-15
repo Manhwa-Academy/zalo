@@ -461,10 +461,46 @@ export function attachListenerToApi(zaloApi: any) {
 
   zaloApi.listener.on('closed', (code: any, reason: any) => {
     console.log(`🔌 Listener closed (code: ${code}, reason: ${reason})`)
+    
+    // ONLY reconnect if closed unexpectedly (NOT normal closure 1000)
+    // Code 1000 = NORMAL_CLOSURE (intentional close, don't reconnect)
+    // Code 1006 = ABNORMAL_CLOSURE (unexpected disconnect, should reconnect)
+    if (code && code !== 1000) {
+      console.log(`⚠️ Abnormal closure detected (code: ${code}), will reconnect in 3s...`)
+      setTimeout(() => {
+        try {
+          if (zaloApi?.listener && !zaloApi.listener.isRunning?.()) {
+            console.log('🔄 Reconnecting listener after abnormal closure...')
+            zaloApi.listener.start({ retryOnClose: true })
+          }
+        } catch (e) {
+          console.error('❌ Failed to reconnect listener:', e)
+        }
+      }, 3000)
+    } else {
+      console.log('ℹ️ Normal closure (code 1000), no reconnect needed')
+    }
   })
 
   zaloApi.listener.on('disconnected', (code: any, reason: any) => {
     console.log(`🔌 Listener disconnected (code: ${code}, reason: ${reason})`)
+    
+    // ONLY reconnect if disconnected unexpectedly (NOT normal closure 1000)
+    if (code && code !== 1000) {
+      console.log(`⚠️ Abnormal disconnect detected (code: ${code}), will reconnect in 3s...`)
+      setTimeout(() => {
+        try {
+          if (zaloApi?.listener && !zaloApi.listener.isRunning?.()) {
+            console.log('🔄 Reconnecting listener after abnormal disconnect...')
+            zaloApi.listener.start({ retryOnClose: true })
+          }
+        } catch (e) {
+          console.error('❌ Failed to reconnect listener:', e)
+        }
+      }, 3000)
+    } else {
+      console.log('ℹ️ Normal disconnect (code 1000), no reconnect needed')
+    }
   })
 
   try {
