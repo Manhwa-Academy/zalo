@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { updateBotSettings } from '@/lib/bot-settings'
+import { updateCurrentBotSettings } from '@/lib/multi-user-zalo'
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     fs.writeFileSync(filePath, buffer)
 
     const bgUrl = `/custom-background.png?t=${Date.now()}`
-    updateBotSettings({ chatBackground: bgUrl })
+    await updateCurrentBotSettings({ settings: { chatBackground: bgUrl } })
 
     return NextResponse.json({ success: true, bgUrl })
   } catch (error: any) {

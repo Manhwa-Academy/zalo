@@ -1,35 +1,19 @@
 import { NextResponse } from 'next/server'
 import { Zalo, LoginQRCallbackEventType } from 'zca-js'
-import { setZaloApi, getZaloApi, setZaloUserInfo, getZaloUserInfo } from '@/lib/zalo-instance'
+import { 
+  getCurrentZaloApi, 
+  setCurrentZaloApi, 
+  setCurrentZaloUserInfo,
+  getCurrentZaloUserInfo,
+  loadCurrentZaloSession,
+  clearCurrentZaloApi,
+  getCurrentUserId
+} from '@/lib/multi-user-zalo'
 import { imageMetadataGetter } from '@/lib/image-metadata-getter'
 import { getQrState, updateQrState, resetQrState } from '@/lib/qr-state'
-import { dataFilePath } from '@/lib/data-dir'
-import fs from 'fs'
 
-const SESSION_FILE = dataFilePath('.zalo-session.json')
-let loginInProgress = false
-
-function saveSessionFromApi(zaloApi: any) {
-  try {
-    const ctx = typeof zaloApi.getContext === 'function' ? zaloApi.getContext() : null
-    if (ctx && ctx.cookie) {
-      let cookieData = ctx.cookie
-      if (typeof ctx.cookie.toJSON === 'function') {
-        cookieData = ctx.cookie.toJSON()
-      }
-      const credentials = {
-        cookie: cookieData,
-        imei: ctx.imei,
-        userAgent: ctx.userAgent,
-        language: ctx.language || 'vi',
-      }
-      fs.writeFileSync(SESSION_FILE, JSON.stringify(credentials, null, 2))
-      console.log('💾 Session saved to .zalo-session.json')
-    }
-  } catch (err) {
-    console.error('Failed to save session:', err)
-  }
-}
+// Map để track login progress theo userId
+const loginInProgressMap = new Map<string, boolean>()
 
 function findAvatarInObj(obj: any): string {
   if (!obj || typeof obj !== 'object') return ''
@@ -100,38 +84,20 @@ async function populateUserInfo(zaloApi: any) {
   }
 
   console.log('👤 Final userInfo populated:', userInfo)
-  setZaloUserInfo(userInfo)
+  await setCurrentZaloUserInfo(userInfo)
   return userInfo
 }
 
-async function loginFromSavedSession(): Promise<any> {
-  if (!fs.existsSync(SESSION_FILE)) return null
-  try {
-    console.log('📂 Found saved session file, attempting auto-login...')
-    const sessionRaw = fs.readFileSync(SESSION_FILE, 'utf-8')
-    const credentials = JSON.parse(sessionRaw)
-    const zalo = new Zalo({ selfListen: true, imageMetadataGetter })
-    const zaloApi = await zalo.login(credentials)
-    console.log('✅ Auto-login from session successful!')
-    setZaloApi(zaloApi)
-    await populateUserInfo(zaloApi)
-    return zaloApi
-  } catch (err: any) {
-    console.error('❌ Auto-login from session failed:', err.message || err)
-    try {
-      if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE)
-    } catch (e) {}
-    return null
-  }
-}
-
 export async function POST(request: Request) {
+  const userId = await getCurrentUserId()
+  
   let force = false
   try {
     const body = await request.json().catch(() => ({}))
     force = !!body.force
   } catch (e) {}
 
+  const loginInProgress = loginInProgressMap.get(userId)
   if (loginInProgress && !force) {
     return NextResponse.json({
       success: false,
@@ -141,16 +107,17 @@ export async function POST(request: Request) {
   }
 
   try {
-    loginInProgress = true
+    loginInProgressMap.set(userId, true)
 
-    let zaloApi = getZaloApi()
+    // Try to load existing session from database
+    let zaloApi = await getCurrentZaloApi()
     if (!zaloApi && !force) {
-      zaloApi = await loginFromSavedSession()
+      zaloApi = await loadCurrentZaloSession()
     }
 
     if (zaloApi && !force) {
       const userInfo = await populateUserInfo(zaloApi)
-      loginInProgress = false
+      loginInProgressMap.set(userId, false)
       updateQrState({ status: 'success' })
       return NextResponse.json({
         success: true,
@@ -218,14 +185,13 @@ export async function POST(request: Request) {
       throw new Error('Đăng nhập không thành công (zaloApi null)')
     }
 
-    setZaloApi(zaloApi)
-    saveSessionFromApi(zaloApi)
+    await setCurrentZaloApi(zaloApi)
     
     console.log('✅ Web QR Login successful!')
     updateQrState({ status: 'success' })
-    loginInProgress = false
+    loginInProgressMap.set(userId, false)
 
-    let userInfo = getZaloUserInfo()
+    let userInfo = await getCurrentZaloUserInfo()
     try {
       userInfo = await populateUserInfo(zaloApi)
     } catch (infoErr) {
@@ -238,7 +204,7 @@ export async function POST(request: Request) {
       message: 'Đăng nhập thành công!'
     })
   } catch (error: any) {
-    loginInProgress = false
+    loginInProgressMap.set(userId, false)
     console.error('Login error:', error)
     updateQrState({
       status: 'error',
@@ -253,10 +219,11 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  let zaloApi = getZaloApi()
+  let zaloApi = await getCurrentZaloApi()
   if (!zaloApi) {
-    zaloApi = await loginFromSavedSession()
+    zaloApi = await loadCurrentZaloSession()
   }
+  
   if (!zaloApi) {
     return NextResponse.json({
       loggedIn: false,
@@ -264,7 +231,7 @@ export async function GET() {
     })
   }
 
-  let userInfo = getZaloUserInfo()
+  let userInfo = await getCurrentZaloUserInfo()
   if (!userInfo || userInfo.displayName === 'User') {
     try {
       userInfo = await populateUserInfo(zaloApi)

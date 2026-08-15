@@ -1,53 +1,56 @@
 import { NextResponse } from 'next/server'
-import fs from 'fs'
-import { dataFilePath } from '@/lib/data-dir'
+import { getSessionId } from '@/lib/session-cookie'
+import { UserManager } from '@/lib/user-manager'
 
-const SESSION_FILE = dataFilePath('.zalo-session.json')
-
-// Save session to file
-export async function POST(request: Request) {
-  try {
-    const sessionData = await request.json()
-    
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(sessionData, null, 2))
-    
-    return NextResponse.json({ success: true, message: 'Session saved' })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-}
-
-// Load session from file
+// Get session info for current user
 export async function GET() {
   try {
-    if (fs.existsSync(SESSION_FILE)) {
-      const data = fs.readFileSync(SESSION_FILE, 'utf-8')
-      const sessionData = JSON.parse(data)
-      
-      return NextResponse.json({ 
-        success: true, 
-        session: sessionData 
-      })
-    }
+    const sessionId = getSessionId()
+    const user = await UserManager.getOrCreateUser(sessionId)
+    const zaloSession = await UserManager.getZaloSession(user.id)
+    const botSettings = await UserManager.getBotSettings(user.id)
     
     return NextResponse.json({ 
-      success: false, 
-      message: 'No session found' 
+      success: true,
+      user: {
+        id: user.id,
+        sessionId: user.sessionId,
+      },
+      hasZaloSession: !!zaloSession,
+      zaloSession: zaloSession ? {
+        userInfo: zaloSession.userInfo,
+      } : null,
+      botSettings: {
+        enabled: botSettings.enabled,
+        autoReplyMessage: botSettings.autoReplyMessage,
+        replyDelay: botSettings.replyDelay,
+      }
     })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('GET /api/zalo/session error:', error)
+    return NextResponse.json({ 
+      success: false,
+      error: error.message 
+    }, { status: 500 })
   }
 }
 
-// Delete session
+// Delete session for current user
 export async function DELETE() {
   try {
-    if (fs.existsSync(SESSION_FILE)) {
-      fs.unlinkSync(SESSION_FILE)
-    }
+    const sessionId = getSessionId()
+    const user = await UserManager.getOrCreateUser(sessionId)
     
-    return NextResponse.json({ success: true, message: 'Session deleted' })
+    await UserManager.deleteZaloSession(user.id)
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Session deleted' 
+    })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('DELETE /api/zalo/session error:', error)
+    return NextResponse.json({ 
+      error: error.message 
+    }, { status: 500 })
   }
 }

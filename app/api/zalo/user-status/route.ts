@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getZaloApi } from '@/lib/zalo-instance'
+import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
 
 function findLastActiveInObj(obj: any, depth = 0): number {
   if (!obj || typeof obj !== 'object' || depth > 5) return 0
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
     }
 
-    const zaloApi = getZaloApi() as any
+    const zaloApi = await getCurrentZaloApi() as any
     if (!zaloApi) {
       return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
     }

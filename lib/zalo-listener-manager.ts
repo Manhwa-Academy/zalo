@@ -1,6 +1,9 @@
 import fs from 'fs'
-import { getBotSettings } from './bot-settings'
 import { dataFilePath } from './data-dir'
+
+// NOTE: In multi-user setup, each user has their own zaloApi instance
+// The listener manager is global but should be refactored per-user in future
+// For now, it works with the current user's settings
 
 const MESSAGES_FILE = dataFilePath('.zalo-messages.json')
 
@@ -161,8 +164,26 @@ export function getStoredMessagesForThread(threadId: string): any[] {
   return messageQueue.filter((m) => String(m.threadId) === tid || String(m.from) === tid)
 }
 
-function shouldAutoReply(threadId: string, isGroupMsg: boolean): boolean {
-  const settings = getBotSettings()
+// Helper to get bot settings - returns default if not available
+async function getBotSettingsAsync() {
+  try {
+    const { getCurrentBotSettings } = await import('./multi-user-zalo')
+    return await getCurrentBotSettings()
+  } catch (e) {
+    return {
+      enabled: false,
+      autoReplyMessage: 'Xin chào! Đây là tin nhắn tự động.',
+      replyScope: 'all',
+      whitelist: [],
+      blacklist: [],
+      useRandomPreset: false,
+      presetMessages: [],
+    }
+  }
+}
+
+async function shouldAutoReply(threadId: string, isGroupMsg: boolean): Promise<boolean> {
+  const settings = await getBotSettingsAsync()
   if (!settings || !settings.enabled) {
     return false
   }
@@ -186,8 +207,8 @@ function shouldAutoReply(threadId: string, isGroupMsg: boolean): boolean {
   return true
 }
 
-function getReplyText(): string {
-  const settings = getBotSettings()
+async function getReplyText(): Promise<string> {
+  const settings = await getBotSettingsAsync()
   if (settings.useRandomPreset && Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
     const validPresets = settings.presetMessages.filter((msg) => msg && typeof msg === 'string' && msg.trim().length > 0)
     if (validPresets.length > 0) {
@@ -394,9 +415,9 @@ export function attachListenerToApi(zaloApi: any) {
     let autoReplied = false
 
     // Perform auto-reply logic ONLY for incoming messages not sent by self
-    if (!message.isSelf && shouldAutoReply(targetThreadId, isGroupMsg)) {
+    if (!message.isSelf && await shouldAutoReply(targetThreadId, isGroupMsg)) {
       try {
-        const replyText = getReplyText()
+        const replyText = await getReplyText()
         console.log(`🤖 Auto-replying to thread ${targetThreadId} with: "${replyText}"...`)
         const threadTypeParam = isGroupMsg ? 1 : 0
         await zaloApi.sendMessage(

@@ -10,8 +10,11 @@ import BotStatus from '@/components/BotStatus'
 import QuickActions from '@/components/QuickActions'
 import UserProfile from '@/components/UserProfile'
 import ZaloChatView from '@/components/ZaloChatView'
+import AuthModal from '@/components/AuthModal'
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
@@ -29,7 +32,6 @@ export default function Home() {
   const [userInfo, setUserInfo] = useState<any>(null)
   const [isListening, setIsListening] = useState(false)
   const [lastActivity, setLastActivity] = useState<string>('')
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [useRandomPreset, setUseRandomPreset] = useState(false)
   const [presetMessages, setPresetMessages] = useState<string[]>([
     'E-Eto... tôi là Monica Everett... xin hãy chiếu cố cho tôi từ bây giờ nhé... 🌸✨🥺🤍',
@@ -61,8 +63,27 @@ export default function Home() {
     return () => clearTimeout(timer)
   }, [])
 
+  // Check authentication status first
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/check')
+        const data = await res.json()
+        setIsAuthenticated(data.authenticated)
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        setIsAuthenticated(false)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    checkAuth()
+  }, [])
+
   // Check login status and load bot settings on page mount (F5)
   useEffect(() => {
+    if (!isAuthenticated) return // Don't load Zalo session if not authenticated
+
     const initPage = async () => {
       try {
         // 1. Fetch bot settings from server
@@ -112,13 +133,11 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to initialize page state:', error)
-      } finally {
-        setIsCheckingAuth(false)
       }
     }
 
     initPage()
-  }, [])
+  }, [isAuthenticated])
 
   // Handle Login via Web QR API with Polling
   const handleLogin = async (force: boolean = false) => {
@@ -520,6 +539,16 @@ export default function Home() {
           <p className="text-gray-300 font-medium text-sm">Đang kiểm tra phiên đăng nhập...</p>
         </div>
       </main>
+    )
+  }
+
+  // Show auth modal if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <>
+        <main className="min-h-screen bg-gradient-to-br from-dark-100 via-dark-200 to-dark-300"></main>
+        <AuthModal onSuccess={() => setIsAuthenticated(true)} />
+      </>
     )
   }
 

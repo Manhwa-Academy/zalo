@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getZaloApi } from '@/lib/zalo-instance'
+import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
 import { attachListenerToApi, clearStoredMessages, messageQueue, sseClients } from '@/lib/zalo-listener-manager'
 
 export const dynamic = 'force-dynamic'
@@ -8,11 +8,11 @@ export const runtime = 'nodejs'
 export async function POST(request: Request) {
   try {
     const { action } = await request.json()
-    const zaloApi = getZaloApi()
+    const zaloApi = await getCurrentZaloApi()
 
     if (!zaloApi) {
-      console.error('❌ zaloApi is null in listener POST')
-      return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
+      console.error('❌ zaloApi is null in listener POST - user not logged in to Zalo')
+      return NextResponse.json({ error: 'Not logged in to Zalo' }, { status: 401 })
     }
 
     if (action === 'start') {
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
 // SSE endpoint for real-time messages to UI
 export async function GET() {
   // Ensure listener is running if zaloApi is logged in
-  const zaloApi = getZaloApi()
+  const zaloApi = await getCurrentZaloApi()
   if (zaloApi) {
     attachListenerToApi(zaloApi)
   }

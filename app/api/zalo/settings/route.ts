@@ -1,18 +1,47 @@
 import { NextResponse } from 'next/server'
-import { getBotSettings, updateBotSettings } from '@/lib/bot-settings'
+import { getCurrentBotSettings, updateCurrentBotSettings } from '@/lib/multi-user-zalo'
 
 export async function GET() {
-  return NextResponse.json(getBotSettings())
+  try {
+    const settings = await getCurrentBotSettings()
+    return NextResponse.json({
+      success: true,
+      settings: {
+        enabled: settings.enabled,
+        autoReplyMessage: settings.autoReplyMessage,
+        replyDelay: settings.replyDelay,
+      }
+    })
+  } catch (error: any) {
+    console.error('GET /api/zalo/settings error:', error)
+    return NextResponse.json({ 
+      success: false,
+      error: error.message 
+    }, { status: 500 })
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const updates = await request.json()
-    const updatedSettings = updateBotSettings(updates)
-    console.log('⚙️ Updated bot settings:', updatedSettings)
-    return NextResponse.json({ success: true, settings: updatedSettings })
+    await updateCurrentBotSettings(updates)
+    const settings = await getCurrentBotSettings()
+    
+    console.log('⚙️ Updated bot settings for current user:', settings)
+    
+    return NextResponse.json({ 
+      success: true, 
+      settings: {
+        enabled: settings.enabled,
+        autoReplyMessage: settings.autoReplyMessage,
+        replyDelay: settings.replyDelay,
+      }
+    })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('POST /api/zalo/settings error:', error)
+    return NextResponse.json({ 
+      error: error.message 
+    }, { status: 500 })
   }
 }
 

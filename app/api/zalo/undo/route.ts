@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getZaloApi } from '@/lib/zalo-instance'
+import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
 import { markMessageUndone } from '@/lib/zalo-listener-manager'
 
 export async function POST(request: Request) {
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing threadId' }, { status: 400 })
     }
 
-    const zaloApi = getZaloApi() as any
+    const zaloApi = await getCurrentZaloApi() as any
 
     if (!zaloApi) {
       return NextResponse.json({ error: 'Not logged in' }, { status: 401 })

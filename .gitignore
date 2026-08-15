@@ -44,3 +44,6 @@ next-env.d.ts
 .zalo-settings.json
 .zalo-media-cache.json
 qr.png
+
+# Migration backups
+*.backup
