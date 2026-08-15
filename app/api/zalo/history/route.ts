@@ -99,11 +99,19 @@ export async function GET(request: Request) {
             else if (raw.content.type === 'image' || raw.content.photoUrl || raw.content.imageUrl || raw.content.href || raw.content.thumb || raw.content.url) {
               const imgUrl = raw.content.url || raw.content.href || raw.content.thumb || raw.content.photoUrl || raw.content.imageUrl || ''
               const imgName = raw.content.name || raw.content.fileName || ''
+              
+              // Try to extract Giphy ID if this is a Giphy GIF filename
+              let giphyId = raw.content.giphyId || ''
+              if (!giphyId && imgName && imgName.startsWith('giphy_')) {
+                giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+              }
+              
               contentStr = JSON.stringify({
                 type: 'image',
                 name: imgName,
                 url: imgUrl,
                 caption: raw.content.caption || raw.content.description || '',
+                giphyId: giphyId, // Preserve Giphy ID for cache lookup
               })
             }
             // File attachment

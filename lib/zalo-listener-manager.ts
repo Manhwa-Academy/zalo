@@ -334,11 +334,19 @@ export function attachListenerToApi(zaloApi: any) {
         // Image/GIF content - preserve URL
         const imgUrl = rawContent.url || rawContent.href || rawContent.thumb || rawContent.photoUrl || rawContent.imageUrl || rawContent.hdUrl || ''
         const imgName = rawContent.name || rawContent.fileName || ''
+        
+        // Try to extract Giphy ID if this is a Giphy GIF filename
+        let giphyId = rawContent.giphyId || ''
+        if (!giphyId && imgName && imgName.startsWith('giphy_')) {
+          giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+        }
+        
         rawContent = JSON.stringify({
           type: 'image',
           name: imgName,
           url: imgUrl,
           caption: rawContent.caption || rawContent.description || '',
+          giphyId: giphyId, // Preserve Giphy ID for cache lookup
         })
       } else if (rawContent.type === 'file' || rawContent.fileName || rawContent.fileUrl || rawContent.fileSize) {
         // File attachment - preserve file metadata

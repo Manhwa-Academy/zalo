@@ -164,19 +164,76 @@ function renderMessageContent(
       } catch (e) {}
     }
 
+    // IMPORTANT: If this is a Giphy GIF, try to use cached Giphy URL instead of Zalo CDN
+    // This prevents 403 errors when Zalo CDN URLs expire
+    const fileName = parsedObj.name || ''
+    const giphyId = parsedObj.giphyId || ''
+    
+    if (fileName || giphyId) {
+      try {
+        const giphyCache = JSON.parse(localStorage.getItem('giphy_cache') || '{}')
+        let cachedUrl: string | null = null
+        
+        // Try lookup by filename
+        if (fileName && giphyCache[fileName]) {
+          cachedUrl = giphyCache[fileName]
+          console.log('🎬 Using cached Giphy URL by filename:', fileName)
+        }
+        // Try lookup by Giphy ID
+        else if (giphyId && giphyCache[`giphy_id_${giphyId}`]) {
+          cachedUrl = giphyCache[`giphy_id_${giphyId}`]
+          console.log('🎬 Using cached Giphy URL by ID:', giphyId)
+        }
+        // Try lookup if current URL is Zalo CDN and might be expired
+        else if (imgUrl && (String(imgUrl).includes('dlfl.vn') || String(imgUrl).includes('zaloapp.com'))) {
+          // This is a Zalo CDN URL - try to find Giphy equivalent in cache
+          const possibleKeys = Object.keys(giphyCache).filter(k => k.includes('.gif'))
+          if (possibleKeys.length > 0) {
+            console.log('⚠️ Zalo CDN URL detected, but no cache match found')
+          }
+        }
+        
+        if (cachedUrl) {
+          imgUrl = cachedUrl
+        }
+      } catch (e) {}
+    }
+
     const titleText = parsedObj.title || parsedObj.description || parsedObj.caption || parsedObj.text || parsedObj.name || ''
 
     if (imgUrl && String(imgUrl).trim() !== '') {
       const cleanImgUrl = String(imgUrl).replace(/\\/g, '')
+      const isGiphyUrl = cleanImgUrl.includes('giphy.com')
+      
       return (
         <div className="space-y-1.5 max-w-xs">
           <img
             src={cleanImgUrl}
-            alt={titleText || 'Ảnh Zalo'}
+            alt={titleText || (isGiphyUrl ? 'GIF Giphy' : 'Ảnh Zalo')}
             className="rounded-xl max-h-60 w-full object-cover border border-white/10 shadow hover:opacity-90 hover:scale-[1.01] transition-all cursor-pointer"
             onClick={(e) => {
               e.stopPropagation()
               if (onMediaClick) onMediaClick(cleanImgUrl)
+            }}
+            onError={(e) => {
+              console.error('❌ Image failed to load:', cleanImgUrl)
+              const target = e.target as HTMLImageElement
+              // Hide broken image and show fallback UI
+              target.style.display = 'none'
+              const parent = target.parentElement
+              if (parent) {
+                parent.innerHTML = `
+                  <div class="p-3 bg-dark-300/90 border border-red-500/30 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-400/30 flex items-center justify-center text-xl flex-shrink-0">
+                      🖼️
+                    </div>
+                    <div class="flex flex-col truncate flex-1">
+                      <span class="text-xs font-bold text-white truncate">${titleText || 'Hình ảnh'}</span>
+                      <span class="text-[10px] text-red-400 font-medium">[URL đã hết hạn]</span>
+                    </div>
+                  </div>
+                `
+              }
             }}
           />
           {titleText && <p className="text-xs text-gray-100 font-medium break-words">{titleText}</p>}
@@ -226,6 +283,13 @@ function renderMessageContent(
       if (giphyCache) {
         const cache = JSON.parse(giphyCache)
         cachedUrl = cache[fileName]
+        
+        // Also try to lookup by giphy ID if filename is giphy_xxx.gif
+        if (!cachedUrl && fileName.startsWith('giphy_')) {
+          const giphyId = fileName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+          cachedUrl = cache[`giphy_id_${giphyId}`]
+          console.log(`🔍 Looking up Giphy cache by ID: ${giphyId}, found:`, !!cachedUrl)
+        }
       }
     } catch (e) {}
     
@@ -667,8 +731,18 @@ export default function ZaloChatView({
             // Merge server cache with existing localStorage cache
             const existing = JSON.parse(localStorage.getItem('giphy_cache') || '{}')
             const merged = { ...existing, ...data.cache }
+            
+            // Also create giphy_id_xxx entries for faster lookup
+            Object.keys(merged).forEach(key => {
+              if (key.startsWith('giphy_') && key.endsWith('.gif')) {
+                const giphyId = key.replace('giphy_', '').replace('.gif', '')
+                merged[`giphy_id_${giphyId}`] = merged[key]
+              }
+            })
+            
             localStorage.setItem('giphy_cache', JSON.stringify(merged))
             console.log('💾 Synced media cache from server:', Object.keys(merged).length, 'entries')
+            console.log('📦 Cache sample:', Object.keys(merged).slice(0, 3))
           }
         }
       } catch (e) {
