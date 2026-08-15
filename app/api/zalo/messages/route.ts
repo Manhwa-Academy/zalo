@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getCurrentZaloApi, getUserFromSessionCookie } from '@/lib/multi-user-zalo'
+import { getCurrentZaloApi, getCurrentUserId } from '@/lib/multi-user-zalo'
 import { broadcastMessage } from '@/lib/zalo-listener-manager'
 import { imageMetadataGetter } from '@/lib/image-metadata-getter'
 import { saveMediaToCache } from '@/lib/media-cache-db'
@@ -9,8 +9,8 @@ import os from 'os'
 
 export async function POST(request: Request) {
   try {
-    const user = await getUserFromSessionCookie()
-    const userId = user?.id || null
+    const userId = await getCurrentUserId()
+    const userIdOrNull = userId || null
     
     let threadId = ''
     let message = ''
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
         // Save to database cache (works for both Giphy and regular images)
         if (finalUrl && fileInfo.name) {
           await saveMediaToCache(
-            userId,
+            userIdOrNull,
             fileInfo.name,
             finalUrl,
             fileInfo.name.endsWith('.gif') ? 'gif' : 'image',
