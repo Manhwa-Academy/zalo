@@ -35,6 +35,38 @@ export interface BotSettings {
 
 export class UserManager {
   /**
+   * Tìm user theo Zalo userId (để tránh duplicate user cho cùng 1 tài khoản Zalo)
+   */
+  static async getUserByZaloId(zaloUserId: string): Promise<User | null> {
+    if (!pool) throw new Error('Database not configured');
+
+    try {
+      const result = await pool.query(
+        `SELECT u.* FROM users u
+         INNER JOIN zalo_sessions zs ON u.id = zs.user_id
+         WHERE zs.user_info->>'userId' = $1
+         AND zs.is_active = true
+         LIMIT 1`,
+        [zaloUserId]
+      );
+
+      if (result.rows.length > 0) {
+        return {
+          id: result.rows[0].id,
+          sessionId: result.rows[0].session_id,
+          createdAt: result.rows[0].created_at,
+          lastActive: result.rows[0].last_active,
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('❌ [UserManager] getUserByZaloId failed:', error);
+      return null;
+    }
+  }
+
+  /**
    * Tạo hoặc lấy user từ sessionId
    */
   static async getOrCreateUser(sessionId: string): Promise<User> {
@@ -80,6 +112,24 @@ export class UserManager {
       };
     } catch (error) {
       console.error('❌ [UserManager] getOrCreateUser failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Link sessionId mới với user đã tồn tại (để merge multi-device)
+   */
+  static async linkSessionToUser(sessionId: string, userId: string): Promise<void> {
+    if (!pool) throw new Error('Database not configured');
+
+    try {
+      await pool.query(
+        'UPDATE users SET session_id = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2',
+        [sessionId, userId]
+      );
+      console.log(`✅ [UserManager] Linked session ${sessionId} to existing user ${userId}`);
+    } catch (error) {
+      console.error('❌ [UserManager] linkSessionToUser failed:', error);
       throw error;
     }
   }

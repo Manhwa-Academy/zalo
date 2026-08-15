@@ -185,18 +185,35 @@ export async function POST(request: Request) {
       throw new Error('Đăng nhập không thành công (zaloApi null)')
     }
 
+    // Populate user info first để lấy Zalo userId
+    let userInfo = await populateUserInfo(zaloApi)
+    
+    // Check if this Zalo account already exists in database
+    if (userInfo.userId && userInfo.userId !== 'Unknown') {
+      console.log(`🔍 Checking if Zalo user ${userInfo.userId} already exists...`)
+      const { UserManager } = await import('@/lib/user-manager')
+      const existingUser = await UserManager.getUserByZaloId(userInfo.userId)
+      
+      if (existingUser && existingUser.id !== userId) {
+        console.log(`✅ Found existing user ${existingUser.id} for Zalo ID ${userInfo.userId}`)
+        console.log(`🔗 Linking current session to existing user instead of creating duplicate`)
+        
+        // Link current session to existing user
+        const { getSessionId } = await import('@/lib/session-cookie')
+        const currentSessionId = getSessionId()
+        await UserManager.linkSessionToUser(currentSessionId, existingUser.id)
+        
+        // Update userId to use the existing one
+        // Note: The current request will use old userId, but next request will use merged userId
+        console.log(`✅ Successfully merged sessions. New session will use user ${existingUser.id}`)
+      }
+    }
+
     await setCurrentZaloApi(zaloApi)
     
     console.log('✅ Web QR Login successful!')
     updateQrState({ status: 'success' })
     loginInProgressMap.set(userId, false)
-
-    let userInfo = await getCurrentZaloUserInfo()
-    try {
-      userInfo = await populateUserInfo(zaloApi)
-    } catch (infoErr) {
-      console.error('Error populating user info:', infoErr)
-    }
     
     return NextResponse.json({ 
       success: true,

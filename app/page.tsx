@@ -11,6 +11,7 @@ import QuickActions from '@/components/QuickActions'
 import UserProfile from '@/components/UserProfile'
 import ZaloChatView from '@/components/ZaloChatView'
 import AuthModal from '@/components/AuthModal'
+import Toast, { ToastProps } from '@/components/Toast'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -24,6 +25,7 @@ export default function Home() {
   const [replyScope, setReplyScope] = useState<'all' | 'user_only' | 'group_only' | 'whitelist'>('all')
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [messageLogs, setMessageLogs] = useState<any[]>([])
+  const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null)
   const [stats, setStats] = useState({
     totalMessages: 0,
     repliedMessages: 0,
@@ -529,9 +531,17 @@ export default function Home() {
     link.click()
   }
   
+  // Toast helper function
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
+    setToast({ message, type })
+  }
+  
   const handleClearLogs = async (type: 'chat_only' | 'logs_only' | 'both') => {
+    let successMessage = ''
+    
     if (type === 'chat_only' || type === 'both') {
       window.dispatchEvent(new CustomEvent('zalo_clear_chat_history'))
+      successMessage = type === 'chat_only' ? 'Đã xóa lịch sử tin nhắn trong Chat!' : ''
     }
 
     if (type === 'logs_only' || type === 'both') {
@@ -541,10 +551,18 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'clearLogs' }),
         })
+        successMessage = type === 'logs_only' ? 'Đã xóa mọi phần log thành công!' : 'Đã xóa cả tin nhắn và log thành công!'
       } catch (e) {
         console.error('Failed to clear logs on server:', e)
+        showToast('Lỗi khi xóa log trên server', 'error')
+        return
       }
       setMessageLogs([])
+    }
+    
+    // Show success toast
+    if (successMessage) {
+      showToast(successMessage, 'success')
     }
   }
   
@@ -710,6 +728,16 @@ export default function Home() {
           </div>
         )}
       </div>
+      
+      {/* Toast Notifications */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          duration={toast.duration}
+          onClose={() => setToast(null)}
+        />
+      )}
     </main>
   )
 }

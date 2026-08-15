@@ -70,11 +70,14 @@ export async function GET(request: Request) {
     const localMsgs = getStoredMessagesForThread(threadId)
     let fetchedMsgs: any[] = []
 
-    // 3. If Group, fetch API history from Zalo
+    // 3. Fetch API history from Zalo
     if (type === 'Group' && typeof zaloApi.getGroupChatHistory === 'function') {
+      // GROUP CHAT HISTORY
       try {
-        const res = await zaloApi.getGroupChatHistory(threadId, 50)
+        console.log(`📥 Fetching group chat history for ${threadId}...`)
+        const res = await zaloApi.getGroupChatHistory(threadId, 100) // Tăng từ 50 → 100
         const groupMsgs = res?.groupMsgs || res?.data?.groupMsgs || []
+        console.log(`✅ Fetched ${groupMsgs.length} group messages for ${threadId}`)
 
         fetchedMsgs = groupMsgs.map((m: any) => {
           const raw = m.data || m
@@ -100,28 +103,52 @@ export async function GET(request: Request) {
               const imgUrl = raw.content.url || raw.content.href || raw.content.thumb || raw.content.photoUrl || raw.content.imageUrl || ''
               const imgName = raw.content.name || raw.content.fileName || ''
               
-              // Try to extract Giphy ID if this is a Giphy GIF filename
-              let giphyId = raw.content.giphyId || ''
-              if (!giphyId && imgName && imgName.startsWith('giphy_')) {
-                giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
-              }
+              // Check if this is actually a video/file by extension
+              const hasFileExtension = /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv|mkv|flv|wmv|mp3|wav|ogg)$/i.test(imgName)
               
-              contentStr = JSON.stringify({
-                type: 'image',
-                name: imgName,
-                url: imgUrl,
-                caption: raw.content.caption || raw.content.description || '',
-                giphyId: giphyId, // Preserve Giphy ID for cache lookup
-              })
+              if (hasFileExtension) {
+                // This is actually a file, not an image
+                contentStr = JSON.stringify({
+                  type: 'file',
+                  name: imgName,
+                  size: raw.content.fileSize || raw.content.size || 0,
+                  url: imgUrl,
+                  caption: raw.content.caption || raw.content.description || '',
+                })
+              } else {
+                // This is an image/GIF
+                // Try to extract Giphy ID if this is a Giphy GIF filename
+                let giphyId = raw.content.giphyId || ''
+                if (!giphyId && imgName && imgName.startsWith('giphy_')) {
+                  giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+                }
+                
+                contentStr = JSON.stringify({
+                  type: 'image',
+                  name: imgName,
+                  url: imgUrl,
+                  caption: raw.content.caption || raw.content.description || '',
+                  giphyId: giphyId, // Preserve Giphy ID for cache lookup
+                })
+              }
             }
             // File attachment
-            else if (raw.content.type === 'file' || raw.content.fileName) {
+            else if (
+              raw.content.type === 'file' || 
+              raw.content.type === 'video' ||
+              raw.content.fileName ||
+              raw.content.fileUrl ||
+              raw.content.fileSize ||
+              (raw.content.name && /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv)$/i.test(raw.content.name))
+            ) {
               contentStr = JSON.stringify({
                 type: 'file',
                 name: raw.content.fileName || raw.content.name || 'File',
                 size: raw.content.fileSize || raw.content.size || 0,
                 url: raw.content.fileUrl || raw.content.url || '',
+                caption: raw.content.caption || raw.content.description || '',
               })
+              console.log(`📎 [History] Parsed file attachment: ${raw.content.fileName || raw.content.name} (${raw.content.fileSize || raw.content.size || 0} bytes)`)
             }
             // Generic content
             else {
@@ -175,6 +202,132 @@ export async function GET(request: Request) {
           console.log(`ℹ️ getGroupChatHistory 404 for ${threadId}`)
         } else {
           console.error('getGroupChatHistory error:', err)
+        }
+      }
+    } else if (type === 'User' && typeof zaloApi.getChatHistory === 'function') {
+      // USER (1-1) CHAT HISTORY
+      try {
+        console.log(`📥 Fetching user chat history for ${threadId}...`)
+        const res = await zaloApi.getChatHistory(threadId, 100, 0) // Tăng từ 50 → 100
+        const userMsgs = res?.data || res?.messages || []
+        console.log(`✅ Fetched ${userMsgs.length} user messages for ${threadId}`)
+
+        fetchedMsgs = userMsgs.map((m: any) => {
+          const raw = m.data || m
+          let contentStr = ''
+
+          // Parse content properly for stickers, images, files
+          if (raw.content && typeof raw.content === 'object') {
+            // Sticker
+            if (raw.content.catId || raw.content.cateId || raw.content.id || raw.content.type === 'sticker') {
+              const catId = raw.content.catId || raw.content.cateId || 1
+              const stkId = raw.content.id || raw.content.stickerId || raw.content.stkId || '10065'
+              const stkUrl = `https://zalo-api.zadn.vn/api/emoticon/sticker/webpc?eid=${stkId}&size=130&version=1`
+              
+              let giphyId = ''
+              if (raw.content.name && raw.content.name.startsWith('giphy_')) {
+                giphyId = raw.content.name.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+              }
+              
+              contentStr = JSON.stringify({
+                type: 'sticker',
+                id: stkId,
+                catId: catId,
+                url: stkUrl,
+              })
+            }
+            // Image/Photo
+            else if (raw.content.type === 'image' || raw.content.photoUrl || raw.content.imageUrl || raw.content.href || raw.content.thumb || raw.content.url) {
+              const imgUrl = raw.content.url || raw.content.href || raw.content.thumb || raw.content.photoUrl || raw.content.imageUrl || ''
+              const imgName = raw.content.name || raw.content.fileName || ''
+              
+              // Check if this is actually a video/file by extension
+              const hasFileExtension = /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv|mkv|flv|wmv|mp3|wav|ogg)$/i.test(imgName)
+              
+              if (hasFileExtension) {
+                // This is actually a file, not an image
+                contentStr = JSON.stringify({
+                  type: 'file',
+                  name: imgName,
+                  size: raw.content.fileSize || raw.content.size || 0,
+                  url: imgUrl,
+                  caption: raw.content.caption || raw.content.description || '',
+                })
+              } else {
+                // This is an image/GIF
+                let giphyId = ''
+                if (imgName && imgName.startsWith('giphy_')) {
+                  giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
+                }
+                
+                contentStr = JSON.stringify({
+                  type: 'image',
+                  name: imgName,
+                  url: imgUrl,
+                  caption: raw.content.caption || raw.content.description || '',
+                  giphyId: giphyId,
+                })
+              }
+            }
+            // File attachment
+            else if (
+              raw.content.type === 'file' || 
+              raw.content.type === 'video' ||
+              raw.content.fileName ||
+              raw.content.fileUrl ||
+              raw.content.fileSize ||
+              (raw.content.name && /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv)$/i.test(raw.content.name))
+            ) {
+              contentStr = JSON.stringify({
+                type: 'file',
+                name: raw.content.fileName || raw.content.name || 'File',
+                size: raw.content.fileSize || raw.content.size || 0,
+                url: raw.content.fileUrl || raw.content.url || '',
+                caption: raw.content.caption || raw.content.description || '',
+              })
+              console.log(`📎 [History] Parsed file attachment: ${raw.content.fileName || raw.content.name} (${raw.content.fileSize || raw.content.size || 0} bytes)`)
+            }
+            // Generic content
+            else {
+              contentStr = raw.content.title || raw.content.description || raw.content.msg || '[Nội dung/Media]'
+            }
+          } else if (typeof raw.content === 'string') {
+            contentStr = raw.content
+          } else if (typeof raw.msg === 'string') {
+            contentStr = raw.msg
+          } else {
+            contentStr = '[Media/Sticker]'
+          }
+
+          const uidFrom = String(raw.uidFrom || raw.from || raw.fromId || '')
+          const senderName = raw.dName || raw.displayName || raw.fromName || (m.isSelf ? 'Bạn (Chính mình)' : `Người dùng (${uidFrom.slice(-4)})`)
+          const senderAvatar = raw.avatar || raw.avt || raw.avatarUrl || ''
+
+          let timestampStr = new Date().toISOString()
+          if (raw.ts) {
+            const numTs = Number(raw.ts)
+            timestampStr = numTs > 100000000000 ? new Date(numTs).toISOString() : new Date(numTs * 1000).toISOString()
+          }
+
+          return {
+            id: raw.msgId || raw.cliMsgId || (Date.now() + Math.random()),
+            msgId: raw.msgId || raw.cliMsgId,
+            cliMsgId: raw.cliMsgId || raw.msgId,
+            threadId: String(threadId),
+            from: uidFrom,
+            fromName: senderName,
+            avatar: senderAvatar,
+            content: contentStr,
+            timestamp: timestampStr,
+            type: 'User',
+            isSelf: !!m.isSelf,
+          }
+        })
+      } catch (err: any) {
+        if (err?.message?.includes('404') || err?.code === 404 || String(err).includes('404')) {
+          console.log(`ℹ️ getChatHistory 404 for ${threadId}`)
+        } else {
+          console.error('getChatHistory error:', err)
         }
       }
     }

@@ -266,18 +266,25 @@ export function attachListenerToApi(zaloApi: any) {
     console.log('🔍 Message data:', JSON.stringify(message.data, null, 2))
 
     const senderId = String(message.data?.uidFrom || message.threadId || message.from || 'Unknown')
-    let senderName = message.data?.dName || message.fromName || ''
-    let senderAvatar = message.data?.avatar || message.data?.avt || message.avatar || ''
+    let senderName = message.data?.dName || message.data?.displayName || message.fromName || ''
+    let senderAvatar = message.data?.avatar || message.data?.avt || message.avatar || message.data?.avatarUrl || ''
 
+    // If sender info is missing, try to fetch from getUserInfo API
     if ((!senderName || !senderAvatar) && typeof zaloApi.getUserInfo === 'function' && senderId !== 'Unknown') {
       try {
+        console.log(`🔍 [Listener] Fetching user info for ${senderId}...`)
         const uInfoRes = await zaloApi.getUserInfo(senderId)
         const uData = uInfoRes?.data || uInfoRes?.[senderId] || uInfoRes
         if (uData) {
           if (!senderName) senderName = uData.displayName || uData.zaloName || uData.name || ''
-          if (!senderAvatar) senderAvatar = uData.avatar || uData.avatarUrl || uData.avt || ''
+          if (!senderAvatar) {
+            senderAvatar = uData.avatar || uData.avatarUrl || uData.avt || uData.avatar_240 || uData.avatar_120 || uData.thumb || ''
+          }
+          console.log(`✅ [Listener] Got user info: ${senderName}, avatar: ${senderAvatar ? 'YES' : 'NO'}`)
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error(`❌ [Listener] Failed to get user info for ${senderId}:`, e)
+      }
     }
 
     if (!senderName) {
@@ -348,11 +355,19 @@ export function attachListenerToApi(zaloApi: any) {
           caption: rawContent.caption || rawContent.description || '',
           giphyId: giphyId, // Preserve Giphy ID for cache lookup
         })
-      } else if (rawContent.type === 'file' || rawContent.fileName || rawContent.fileUrl || rawContent.fileSize) {
-        // File attachment - preserve file metadata
-        const fileName = rawContent.fileName || rawContent.name || 'File'
-        const fileUrl = rawContent.fileUrl || rawContent.url || rawContent.href || ''
-        const fileSize = rawContent.fileSize || rawContent.size || 0
+      } else if (
+        rawContent.type === 'file' || 
+        rawContent.type === 'video' ||
+        rawContent.fileName || 
+        rawContent.fileUrl || 
+        rawContent.fileSize ||
+        (rawContent.name && /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv)$/i.test(rawContent.name))
+      ) {
+        // File attachment - preserve file metadata (including videos, documents, archives, code files)
+        const fileName = rawContent.fileName || rawContent.name || rawContent.title || 'File'
+        const fileUrl = rawContent.fileUrl || rawContent.url || rawContent.href || rawContent.downloadUrl || ''
+        const fileSize = rawContent.fileSize || rawContent.size || rawContent.fsize || 0
+        
         rawContent = JSON.stringify({
           type: 'file',
           name: fileName,
@@ -432,6 +447,8 @@ export function attachListenerToApi(zaloApi: any) {
       cliMsgId: messageData.cliMsgId,
       globalMsgId: messageData.globalMsgId,
       from: messageData.from,
+      fromName: messageData.fromName,
+      avatar: messageData.avatar ? messageData.avatar.slice(0, 50) + '...' : 'NO AVATAR',
       isSelf: messageData.isSelf,
       contentPreview: String(messageData.content).slice(0, 50),
     })

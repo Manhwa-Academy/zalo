@@ -1,34 +1,17 @@
 import { NextResponse } from 'next/server'
-import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
+import { getCurrentZaloApi, getUserFromSessionCookie } from '@/lib/multi-user-zalo'
 import { broadcastMessage } from '@/lib/zalo-listener-manager'
 import { imageMetadataGetter } from '@/lib/image-metadata-getter'
-import { dataFilePath } from '@/lib/data-dir'
+import { saveMediaToCache } from '@/lib/media-cache-db'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-// Cache file for storing filename -> URL mapping for uploaded media
-const MEDIA_CACHE_FILE = dataFilePath('.zalo-media-cache.json')
-
-function loadMediaCache(): Record<string, string> {
-  try {
-    if (fs.existsSync(MEDIA_CACHE_FILE)) {
-      return JSON.parse(fs.readFileSync(MEDIA_CACHE_FILE, 'utf-8'))
-    }
-  } catch (e) {}
-  return {}
-}
-
-function saveMediaCache(cache: Record<string, string>) {
-  try {
-    fs.writeFileSync(MEDIA_CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8')
-  } catch (e) {
-    console.error('Failed to save media cache:', e)
-  }
-}
-
 export async function POST(request: Request) {
   try {
+    const user = await getUserFromSessionCookie()
+    const userId = user?.id || null
+    
     let threadId = ''
     let message = ''
     let threadType = 0
@@ -36,6 +19,7 @@ export async function POST(request: Request) {
     let filePaths: string[] = []
     let fileInfo: any = null
     let explicitFileName: string = '' // NEW: Explicit filename from form
+    let giphyId: string = '' // NEW: Giphy ID for caching
 
     const contentType = request.headers.get('content-type') || ''
     
@@ -45,6 +29,7 @@ export async function POST(request: Request) {
       message = (formData.get('message') as string) || ''
       threadType = Number(formData.get('threadType') || 0)
       explicitFileName = (formData.get('fileName') as string) || '' // NEW
+      giphyId = (formData.get('giphyId') as string) || '' // NEW: Get Giphy ID from form
       
       const stickerRaw = formData.get('sticker') as string
       if (stickerRaw) {
@@ -152,11 +137,12 @@ export async function POST(request: Request) {
       const uploadedUrl = rawMsgData?.href || rawMsgData?.url || rawMsgData?.thumb || ''
       
       if (fileInfo.type.startsWith('image/')) {
-        // For Giphy GIFs, try to get cached URL
+        // For Giphy GIFs and images, save to database cache
         let finalUrl = uploadedUrl
-        if (!finalUrl && fileInfo.name) {
-          const cache = loadMediaCache()
-          finalUrl = cache[fileInfo.name] || ''
+        
+        // Extract Giphy ID from filename if not provided
+        if (!giphyId && fileInfo.name && fileInfo.name.startsWith('giphy_')) {
+          giphyId = fileInfo.name.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
         }
         
         sentContent = JSON.stringify({
@@ -164,14 +150,19 @@ export async function POST(request: Request) {
           name: fileInfo.name, // Always include filename
           caption: message,
           url: finalUrl,
+          giphyId: giphyId || undefined,
         })
         
-        // Cache the filename -> URL mapping for Giphy GIFs and images
+        // Save to database cache (works for both Giphy and regular images)
         if (finalUrl && fileInfo.name) {
-          const cache = loadMediaCache()
-          cache[fileInfo.name] = finalUrl
-          saveMediaCache(cache)
-          console.log(`💾 Cached media URL for ${fileInfo.name}:`, finalUrl)
+          await saveMediaToCache(
+            userId,
+            fileInfo.name,
+            finalUrl,
+            fileInfo.name.endsWith('.gif') ? 'gif' : 'image',
+            giphyId || undefined
+          )
+          console.log(`💾 [Messages] Saved to DB cache: ${fileInfo.name} (Giphy ID: ${giphyId || 'N/A'})`)
         }
       } else {
         sentContent = JSON.stringify({

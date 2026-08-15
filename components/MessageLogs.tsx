@@ -163,20 +163,48 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center space-x-3">
-                  {(log as any).avatar ? (
-                    <img
-                      src={(log as any).avatar}
-                      alt={(log as any).fromName || log.from}
-                      className="w-10 h-10 rounded-full object-cover border border-white/10 shadow-sm"
-                      onError={(e) => {
-                        ;(e.target as HTMLElement).style.display = 'none'
-                      }}
-                    />
-                  ) : (
-                    <div className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-sm font-bold shadow-sm">
-                      {((log as any).fromName || log.from || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  {(() => {
+                    const hasValidAvatar = (log as any).avatar && 
+                                          String((log as any).avatar).trim() !== '' && 
+                                          !String((log as any).avatar).includes('ui-avatars.com')
+                    
+                    const displayName = (log as any).fromName || log.from || 'U'
+                    const firstLetter = displayName.charAt(0).toUpperCase()
+                    
+                    // Use CSS-based fallback avatar (no external service)
+                    if (!hasValidAvatar) {
+                      return (
+                        <div 
+                          className="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0"
+                          title={displayName}
+                        >
+                          {firstLetter}
+                        </div>
+                      )
+                    }
+                    
+                    // Try to load real avatar
+                    return (
+                      <img
+                        src={(log as any).avatar}
+                        alt={displayName}
+                        className="w-10 h-10 rounded-full object-cover border border-white/10 shadow-sm flex-shrink-0"
+                        onError={(e) => {
+                          // If real avatar fails, replace with CSS fallback
+                          const target = e.target as HTMLImageElement
+                          const parent = target.parentElement
+                          if (parent) {
+                            target.remove()
+                            const fallback = document.createElement('div')
+                            fallback.className = 'w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center text-sm font-bold shadow-sm flex-shrink-0'
+                            fallback.textContent = firstLetter
+                            fallback.title = displayName
+                            parent.insertBefore(fallback, parent.firstChild)
+                          }
+                        }}
+                      />
+                    )
+                  })()}
                   <div>
                     <p className="font-medium">{(log as any).fromName || log.from}</p>
                     <p className="text-xs text-gray-400">

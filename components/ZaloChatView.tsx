@@ -130,19 +130,59 @@ function renderMessageContent(
     }
 
     if (parsedObj.type === 'file') {
+      const fileName = parsedObj.name || 'Tập tin'
+      const fileExt = fileName.split('.').pop()?.toLowerCase() || ''
+      
+      // Determine icon and color based on file type
+      let icon = '📄'
+      let colorClass = 'sky'
+      
+      if (['mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv'].includes(fileExt)) {
+        icon = '🎬'
+        colorClass = 'purple'
+      } else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(fileExt)) {
+        icon = '🎵'
+        colorClass = 'pink'
+      } else if (['pdf'].includes(fileExt)) {
+        icon = '📕'
+        colorClass = 'red'
+      } else if (['doc', 'docx'].includes(fileExt)) {
+        icon = '📘'
+        colorClass = 'blue'
+      } else if (['xls', 'xlsx', 'csv'].includes(fileExt)) {
+        icon = '📊'
+        colorClass = 'green'
+      } else if (['ppt', 'pptx'].includes(fileExt)) {
+        icon = '📙'
+        colorClass = 'orange'
+      } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(fileExt)) {
+        icon = '📦'
+        colorClass = 'amber'
+      } else if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml'].includes(fileExt)) {
+        icon = '💻'
+        colorClass = 'cyan'
+      } else if (['txt', 'md'].includes(fileExt)) {
+        icon = '📝'
+        colorClass = 'gray'
+      }
+      
       return (
         <div className="p-2.5 bg-dark-300/90 border border-white/15 rounded-xl flex items-center gap-3 max-w-xs shadow-md">
-          <div className="w-10 h-10 rounded-lg bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-xl text-sky-400 font-bold flex-shrink-0">
-            📄
+          <div className={`w-10 h-10 rounded-lg bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center text-xl flex-shrink-0`}>
+            {icon}
           </div>
           <div className="flex flex-col truncate flex-1">
-            <span className="text-xs font-bold text-white truncate">{parsedObj.name || 'Tập tin'}</span>
-            {parsedObj.size && (
+            <span className="text-xs font-bold text-white truncate">{fileName}</span>
+            {parsedObj.size && parsedObj.size > 0 && (
               <span className="text-[10px] text-gray-400 font-mono">
-                {(parsedObj.size / (1024 * 1024)).toFixed(2)} MB
+                {parsedObj.size > 1024 * 1024 
+                  ? `${(parsedObj.size / (1024 * 1024)).toFixed(2)} MB`
+                  : `${(parsedObj.size / 1024).toFixed(0)} KB`
+                }
               </span>
             )}
             {parsedObj.caption && <span className="text-xs text-gray-200 mt-1">{parsedObj.caption}</span>}
+            <span className={`text-[10px] text-${colorClass}-400 font-medium mt-0.5`}>[{fileExt.toUpperCase() || 'FILE'}]</span>
           </div>
         </div>
       )
@@ -646,11 +686,16 @@ export default function ZaloChatView({
         localStorage.setItem('giphy_cache', JSON.stringify(giphyCache))
         console.log(`💾 Cached Giphy URL in localStorage for ${fileName}:`, previewUrl)
         
-        // Also save to server cache
+        // Also save to server database cache with Giphy ID
         await fetch('/api/zalo/media-cache', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName, url: previewUrl }),
+          body: JSON.stringify({ 
+            fileName, 
+            url: previewUrl,
+            giphyId: gif.id,
+            mediaType: 'gif'
+          }),
         }).catch(() => {})
       } catch (e) {
         console.warn('Failed to cache Giphy URL:', e)
@@ -662,6 +707,7 @@ export default function ZaloChatView({
       formData.append('message', '')
       formData.append('file', file)
       formData.append('fileName', fileName) // Pass filename explicitly
+      formData.append('giphyId', gif.id) // Pass Giphy ID for database caching
 
       const res = await fetch('/api/zalo/messages', {
         method: 'POST',
@@ -1595,6 +1641,32 @@ export default function ZaloChatView({
     }
   }, [conversations])
 
+  // Auto-load history when activeThreadId changes
+  useEffect(() => {
+    if (!activeThreadId) return
+    
+    // Load history if not loaded yet
+    if (!historyMessages[activeThreadId] || historyMessages[activeThreadId].length === 0) {
+      const conv = conversations.find((c) => c.threadId === activeThreadId)
+      if (!conv) return
+      
+      console.log(`📥 Auto-loading history for active thread: ${activeThreadId}`)
+      
+      fetch(`/api/zalo/history?threadId=${activeThreadId}&type=${conv.type}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.messages)) {
+            setHistoryMessages((prev) => ({
+              ...prev,
+              [activeThreadId]: data.messages,
+            }))
+            console.log(`✅ Loaded ${data.messages.length} messages for thread ${activeThreadId}`)
+          }
+        })
+        .catch((e) => console.error('Failed to auto-load history:', e))
+    }
+  }, [activeThreadId, conversations])
+
   // Auto scroll to bottom of chat history when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -1976,10 +2048,30 @@ export default function ZaloChatView({
                 return (
                   <div
                     key={conv.threadId}
-                    onClick={() => {
+                    onClick={async () => {
                       setActiveThreadId(conv.threadId)
                       if (typeof window !== 'undefined') {
                         localStorage.setItem('zalo_active_thread_id', conv.threadId)
+                      }
+                      
+                      // Auto-load history if not loaded yet
+                      if (!historyMessages[conv.threadId] || historyMessages[conv.threadId].length === 0) {
+                        console.log(`📥 Auto-loading history for thread: ${conv.threadId}`)
+                        try {
+                          const res = await fetch(`/api/zalo/history?threadId=${conv.threadId}&type=${conv.type}`)
+                          if (res.ok) {
+                            const data = await res.json()
+                            if (data.success && Array.isArray(data.messages)) {
+                              setHistoryMessages((prev) => ({
+                                ...prev,
+                                [conv.threadId]: data.messages,
+                              }))
+                              console.log(`✅ Loaded ${data.messages.length} messages for thread ${conv.threadId}`)
+                            }
+                          }
+                        } catch (e) {
+                          console.error('Failed to auto-load history:', e)
+                        }
                       }
                     }}
                     className={`p-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/5 ${
@@ -2052,7 +2144,7 @@ export default function ZaloChatView({
         {activeConv ? (
           <>
             {/* Top Chat Header */}
-            <div className="p-3 sm:p-4 bg-dark-200 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 relative z-30 shadow-md">
+            <div className={`sticky top-0 p-3 sm:p-4 bg-dark-200 border-b border-white/10 flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 z-50 shadow-lg ${showRightInfoDrawer ? 'hidden' : 'flex'}`}>
               <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 {/* Mobile Back Button */}
                 <button
@@ -2104,18 +2196,18 @@ export default function ZaloChatView({
               </div>
 
               {/* Bot Control & Action Buttons for Active Chat */}
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 relative">
+              <div className={`flex items-center gap-1 sm:gap-1.5 flex-shrink-0 relative ${showRightInfoDrawer ? 'hidden md:flex' : 'flex'}`}>
                 {activeConv.type === 'Group' && (
                   <button
                     onClick={() => toggleWhitelistGroup(activeConv.threadId)}
-                    className={`btn text-xs py-1.5 px-2 sm:px-2.5 flex items-center gap-1 rounded-xl border transition-all flex-shrink-0 ${
+                    className={`btn text-[10px] sm:text-xs py-1 sm:py-1.5 px-1.5 sm:px-2.5 flex items-center gap-0.5 sm:gap-1 rounded-lg sm:rounded-xl border transition-all flex-shrink-0 ${
                       isGroupBotWhitelisted
                         ? 'bg-success/20 border-success/40 text-success'
                         : 'bg-dark-300 border-white/10 text-gray-400 hover:text-white'
                     }`}
                     title={isGroupBotWhitelisted ? 'Tắt Auto-Reply nhóm' : 'Bật Auto-Reply nhóm'}
                   >
-                    <span>🤖</span>
+                    <span className="text-sm sm:text-base">🤖</span>
                     <span className="hidden xl:inline">Auto-Reply: {isGroupBotWhitelisted ? 'Đang BẬT' : 'Đang TẮT'}</span>
                     <span className="xl:hidden">{isGroupBotWhitelisted ? 'BẬT' : 'TẮT'}</span>
                   </button>
@@ -2129,18 +2221,19 @@ export default function ZaloChatView({
                       e.stopPropagation()
                       setShowHeaderActionMenu((prev) => !prev)
                     }}
-                    className="btn text-xs py-1.5 px-2.5 sm:px-3 flex items-center gap-1 rounded-xl border border-white/15 bg-dark-300 hover:bg-white/10 text-gray-200 transition-all flex-shrink-0 shadow cursor-pointer"
+                    className="btn text-[10px] sm:text-xs py-1 sm:py-1.5 px-2 sm:px-3 flex items-center gap-0.5 sm:gap-1 rounded-lg sm:rounded-xl border border-white/15 bg-dark-300 hover:bg-white/10 text-gray-200 transition-all flex-shrink-0 shadow cursor-pointer"
                     title="Menu tính năng"
                   >
-                    <span>⚡</span>
+                    <span className="text-sm sm:text-base">⚡</span>
                     <span className="hidden sm:inline font-medium">Thao tác</span>
-                    <span className="text-[9px]">▼</span>
+                    <span className="sm:hidden font-medium">Menu</span>
+                    <span className="text-[8px] sm:text-[9px]">▼</span>
                   </button>
 
                   {showHeaderActionMenu && (
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 top-full mt-2 w-56 bg-dark-100 border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-[999] backdrop-blur-xl animate-fadeIn divide-y divide-white/10"
+                      className="absolute right-0 top-full mt-2 w-56 bg-dark-100 border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-[9999] backdrop-blur-xl animate-fadeIn divide-y divide-white/10"
                     >
                       <button
                         type="button"
@@ -2227,14 +2320,15 @@ export default function ZaloChatView({
                 <button
                   onClick={() => setShowRightInfoDrawer(!showRightInfoDrawer)}
                   title="Thông tin hội thoại"
-                  className={`btn text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-xl border transition-all flex-shrink-0 font-bold shadow-lg ${
+                  className={`btn text-[10px] sm:text-xs py-1 sm:py-1.5 px-2 sm:px-3 flex items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl border transition-all flex-shrink-0 font-bold shadow-lg ${
                     showRightInfoDrawer
                       ? 'bg-primary border-primary text-white ring-2 ring-primary/40'
                       : 'bg-gradient-to-r from-sky-600 to-blue-600 border-sky-500 text-white hover:brightness-110'
                   }`}
                 >
-                  <span>ℹ️</span>
-                  <span>Thông tin</span>
+                  <span className="text-sm sm:text-base">ℹ️</span>
+                  <span className="hidden sm:inline">Thông tin</span>
+                  <span className="sm:hidden">Info</span>
                 </button>
               </div>
             </div>
@@ -2949,9 +3043,9 @@ export default function ZaloChatView({
 
       {/* Right Information & Media Side Drawer */}
       {showRightInfoDrawer && activeConv && (
-        <div className="w-full md:w-80 bg-dark-200 border-l border-white/10 flex flex-col h-full animate-slideIn select-none z-20 overflow-hidden flex-shrink-0">
+        <div className="w-full md:w-80 bg-dark-200 border-l border-white/10 flex flex-col h-full animate-slideIn select-none z-40 overflow-hidden flex-shrink-0">
           {/* Drawer Header */}
-          <div className="p-4 bg-dark-300/80 border-b border-white/10 flex items-center justify-between">
+          <div className="sticky top-0 p-4 bg-dark-300 border-b border-white/10 flex items-center justify-between z-50">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <span>ℹ️</span>
               <span>Thông tin hội thoại</span>
