@@ -8,9 +8,7 @@
 
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
+import 'dotenv/config';
 
 const { Pool } = pg;
 
