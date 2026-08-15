@@ -1,4 +1,4 @@
-import { pool } from './postgres'
+import pool from './postgres'
 
 export interface MediaCacheEntry {
   id?: string
@@ -21,6 +21,11 @@ export async function saveMediaToCache(
   mediaType: string = 'image',
   giphyId?: string
 ): Promise<boolean> {
+  if (!pool) {
+    console.warn('⚠️ [MediaCache] Database not available, skipping save')
+    return false
+  }
+  
   try {
     const query = `
       INSERT INTO media_cache (user_id, file_name, original_url, media_type, giphy_id)
@@ -51,6 +56,11 @@ export async function getMediaFromCache(
   fileName: string,
   userId?: string | null
 ): Promise<string | null> {
+  if (!pool) {
+    console.warn('⚠️ [MediaCache] Database not available')
+    return null
+  }
+  
   try {
     let query: string
     let values: any[]
@@ -88,6 +98,11 @@ export async function getMediaByGiphyId(
   giphyId: string,
   userId?: string | null
 ): Promise<string | null> {
+  if (!pool) {
+    console.warn('⚠️ [MediaCache] Database not available')
+    return null
+  }
+  
   try {
     let query: string
     let values: any[]
@@ -119,6 +134,11 @@ export async function getMediaByGiphyId(
  * Get all cached media for a user
  */
 export async function getAllMediaCache(userId?: string | null): Promise<Record<string, string>> {
+  if (!pool) {
+    console.warn('⚠️ [MediaCache] Database not available')
+    return {}
+  }
+  
   try {
     let query: string
     let values: any[]
@@ -156,6 +176,11 @@ export async function getAllMediaCache(userId?: string | null): Promise<Record<s
  * Clean up old media cache entries (older than 90 days)
  */
 export async function cleanupOldMediaCache(daysOld: number = 90): Promise<number> {
+  if (!pool) {
+    console.warn('⚠️ [MediaCache] Database not available')
+    return 0
+  }
+  
   try {
     const query = `DELETE FROM media_cache WHERE created_at < NOW() - INTERVAL '${daysOld} days'`
     const result = await pool.query(query)

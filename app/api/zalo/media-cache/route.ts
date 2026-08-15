@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getUserFromSessionCookie } from '@/lib/multi-user-zalo'
+import { getCurrentUserId } from '@/lib/multi-user-zalo'
 import { saveMediaToCache, getAllMediaCache } from '@/lib/media-cache-db'
 
 export async function GET() {
   try {
-    const user = await getUserFromSessionCookie()
-    const userId = user?.id || null
+    const userId = await getCurrentUserId()
+    const userIdOrNull = userId || null
     
-    const cache = await getAllMediaCache(userId)
+    const cache = await getAllMediaCache(userIdOrNull)
     return NextResponse.json({ success: true, cache })
   } catch (error: any) {
     console.error('❌ [GET /api/zalo/media-cache] Error:', error)
@@ -17,8 +17,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await getUserFromSessionCookie()
-    const userId = user?.id || null
+    const userId = await getCurrentUserId()
+    const userIdOrNull = userId || null
     
     const { fileName, url, giphyId, mediaType } = await request.json()
     
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing fileName or url' }, { status: 400 })
     }
     
-    const saved = await saveMediaToCache(userId, fileName, url, mediaType || 'image', giphyId)
+    const saved = await saveMediaToCache(userIdOrNull, fileName, url, mediaType || 'image', giphyId)
     
     if (saved) {
       console.log(`💾 [POST /api/zalo/media-cache] Saved: ${fileName} -> ${url.slice(0, 50)}...`)
