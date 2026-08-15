@@ -136,6 +136,10 @@ export default function Home() {
           setIsLoggedIn(true)
           if (loginData.userInfo) setUserInfo(loginData.userInfo)
           startListener()
+        } else {
+          // If not logged in, auto-trigger QR generation
+          console.log('ℹ️ Not logged in, auto-generating QR...')
+          handleLogin(false)
         }
       } catch (error) {
         console.error('Failed to initialize page state:', error)
@@ -172,14 +176,15 @@ export default function Home() {
 
           // Check if logged in successfully
           if (data.loggedIn) {
-            console.log('✅ Login successful! Stopping poll.')
+            console.log('✅ Login successful! Redirecting to app...')
             clearInterval(pollInterval)
             setIsLoggedIn(true)
             if (data.userInfo) setUserInfo(data.userInfo)
             setIsLoading(false)
+            setQrState(null) // Clear QR state
             
             // Start listener after successful login
-            setTimeout(() => startListener(), 1000)
+            setTimeout(() => startListener(), 500)
           }
           
           // Stop polling if error/expired/declined

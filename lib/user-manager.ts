@@ -230,10 +230,19 @@ export class UserManager {
     if (!pool) return;
 
     try {
+      // 1. Load existing settings from DB to merge with updates
+      const existingResult = await pool.query(
+        'SELECT settings FROM bot_settings WHERE user_id = $1',
+        [userId]
+      );
+      
+      const existingSettings = existingResult.rows[0]?.settings || {};
+      
       const fields: string[] = [];
       const values: any[] = [];
       let paramIndex = 1;
 
+      // Core fields (have dedicated columns)
       if (updates.enabled !== undefined) {
         fields.push(`enabled = $${paramIndex++}`);
         values.push(updates.enabled);
@@ -246,10 +255,21 @@ export class UserManager {
         fields.push(`reply_delay = $${paramIndex++}`);
         values.push(updates.replyDelay);
       }
-      if (updates.settings !== undefined) {
-        fields.push(`settings = $${paramIndex++}`);
-        values.push(JSON.stringify(updates.settings));
-      }
+
+      // Extra fields (save to JSONB settings column)
+      const newExtraFields: any = {};
+      if (updates.replyScope !== undefined) newExtraFields.replyScope = updates.replyScope;
+      if (updates.whitelist !== undefined) newExtraFields.whitelist = updates.whitelist;
+      if (updates.blacklist !== undefined) newExtraFields.blacklist = updates.blacklist;
+      if (updates.useRandomPreset !== undefined) newExtraFields.useRandomPreset = updates.useRandomPreset;
+      if (updates.presetMessages !== undefined) newExtraFields.presetMessages = updates.presetMessages;
+      
+      // Merge existing JSONB settings with new updates
+      const mergedSettings = { ...existingSettings, ...newExtraFields };
+      
+      // Always update settings column to preserve all fields
+      fields.push(`settings = $${paramIndex++}`);
+      values.push(JSON.stringify(mergedSettings));
 
       fields.push(`updated_at = CURRENT_TIMESTAMP`);
       values.push(userId);
@@ -259,7 +279,11 @@ export class UserManager {
         values
       );
 
-      console.log(`✅ [UserManager] Updated bot settings for user: ${userId}`);
+      console.log(`✅ [UserManager] Updated bot settings for user: ${userId}`, {
+        coreFields: { enabled: updates.enabled, autoReplyMessage: updates.autoReplyMessage?.slice(0, 30) },
+        extraFields: newExtraFields,
+        mergedSettings,
+      });
     } catch (error) {
       console.error('❌ [UserManager] updateBotSettings failed:', error);
       throw error;
