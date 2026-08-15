@@ -24,12 +24,21 @@ export default function ZaloImportModal({ onClose, onSuccess }: ZaloImportModalP
     try {
       const parsedData = JSON.parse(importData)
 
+      // Support both v1.0 (old format) and v2.0 (new format with settings)
+      const credentials = parsedData.credentials || parsedData.account || parsedData
+      const botSettings = parsedData.botSettings
+      const messages = parsedData.messages
+      const userInfo = parsedData.userInfo
+
       const response = await fetch('/api/zalo/import-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          credentials: parsedData.account || parsedData,
+          credentials,
+          botSettings,
+          messages,
+          userInfo,
         }),
       })
 
@@ -37,7 +46,13 @@ export default function ZaloImportModal({ onClose, onSuccess }: ZaloImportModalP
 
       if (response.ok) {
         console.log('✅ [Frontend] Import successful')
-        alert('✅ Đã nhập tài khoản Zalo thành công! Đang tải lại...')
+        
+        let successMsg = '✅ Đã nhập tài khoản Zalo thành công!'
+        if (botSettings) successMsg += '\n✅ Đã khôi phục cài đặt bot!'
+        if (messages && messages.length > 0) successMsg += `\n✅ Đã khôi phục ${messages.length} tin nhắn!`
+        successMsg += '\n\nĐang tải lại...'
+        
+        alert(successMsg)
         setTimeout(() => {
           window.location.reload()
         }, 1000)

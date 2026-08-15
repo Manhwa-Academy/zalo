@@ -23,11 +23,14 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
       const data = await response.json()
 
       if (response.ok) {
-        // Create downloadable JSON file
+        // Create downloadable JSON file with full backup
         const exportData = {
+          version: '2.0',
           exported_at: new Date().toISOString(),
-          account: data.credentials,
-          version: '1.0',
+          credentials: data.credentials,
+          botSettings: data.botSettings,
+          messages: data.messages,
+          userInfo: data.userInfo,
         }
 
         const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -36,11 +39,11 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `zalo-account-${Date.now()}.json`
+        link.download = `zalo-backup-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
 
-        setSuccess('✅ Đã xuất tài khoản Zalo thành công!')
+        setSuccess('✅ Đã xuất backup đầy đủ (credentials + settings + messages)!')
       } else {
         setError(data.error || 'Xuất tài khoản thất bại')
       }
@@ -59,7 +62,7 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
       </h3>
 
       <p className="text-sm text-gray-400 mb-4">
-        Xuất tài khoản Zalo để đăng nhập trên nhiều thiết bị mà không cần quét QR lại
+        Xuất toàn bộ dữ liệu (credentials + settings + messages) để khôi phục trên thiết bị khác
       </p>
 
       {/* Messages */}
@@ -89,12 +92,14 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
 
       {/* Info Box */}
       <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-        <p className="text-xs text-blue-300 font-semibold mb-2">💡 Hướng dẫn:</p>
+        <p className="text-xs text-blue-300 font-semibold mb-2">💡 Nội dung backup bao gồm:</p>
         <ul className="text-xs text-gray-400 space-y-1">
-          <li>• <strong>Xuất:</strong> Lưu file JSON chứa credentials Zalo</li>
-          <li>• <strong>Nhập:</strong> Sử dụng nút "📥 Nhập tài khoản" ở trang đăng nhập (QR page)</li>
-          <li>• <strong>Bảo mật:</strong> Không chia sẻ file này cho người khác!</li>
-          <li>• <strong>Multi-device:</strong> 1 tài khoản Zalo login nhiều thiết bị</li>
+          <li>• <strong>🔐 Credentials:</strong> Thông tin đăng nhập Zalo</li>
+          <li>• <strong>⚙️ Bot Settings:</strong> Cấu hình bot (auto-reply, AI, whitelist...)</li>
+          <li>• <strong>💬 Messages:</strong> 100 tin nhắn gần đây nhất</li>
+          <li>• <strong>👤 User Info:</strong> Thông tin profile (tên, avatar...)</li>
+          <li>• <strong>📥 Nhập:</strong> Sử dụng nút "Nhập tài khoản" ở trang đăng nhập (QR page)</li>
+          <li>• <strong>🔒 Bảo mật:</strong> Không chia sẻ file này cho người khác!</li>
         </ul>
       </div>
     </div>
