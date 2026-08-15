@@ -129,6 +129,13 @@ export class UserManager {
     if (!pool) throw new Error('Database not configured');
 
     try {
+      // First, delete any existing user with this session_id to avoid duplicate
+      await pool.query(
+        'DELETE FROM users WHERE session_id = $1 AND id != $2',
+        [sessionId, userId]
+      );
+      
+      // Then update the target user with new session_id
       await pool.query(
         'UPDATE users SET session_id = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2',
         [sessionId, userId]
@@ -138,6 +145,7 @@ export class UserManager {
       console.error('❌ [UserManager] linkSessionToUser failed:', error);
       throw error;
     }
+  }
   }
 
   /**
