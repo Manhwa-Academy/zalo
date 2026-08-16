@@ -162,7 +162,7 @@ export class AuthManager {
          WHERE user_id = $1
          AND id NOT IN (
            SELECT id FROM auth_sessions
-           WHERE user_id = $1
+           WHERE user_id = $2
            AND is_active = true
            ORDER BY last_active DESC
            LIMIT 3
