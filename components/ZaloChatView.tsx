@@ -34,6 +34,7 @@ function getLastMessagePreview(content: any): string {
   
   if (typeof content === 'object' && content !== null) {
     if (content.catId || content.cateId || content.type === 'sticker') return '[Nhãn dán]'
+    if (content.type === 'link') return `[🔗 ${content.title || content.url || 'Link'}]`
     if (content.type === 'image' || content.photoUrl || content.imageUrl) return '[Hình ảnh]'
     if (content.type === 'file') return `[Tập tin: ${content.name || 'File'}]`
     if (content.href || content.thumb || content.url) return '[Hình ảnh]'
@@ -47,6 +48,7 @@ function getLastMessagePreview(content: any): string {
     try {
       const parsed = JSON.parse(trimmed)
       if (parsed.catId || parsed.cateId || parsed.type === 'sticker' || (parsed.id && !parsed.type)) return '[Nhãn dán]'
+      if (parsed.type === 'link') return `[🔗 ${parsed.title || parsed.url || 'Link'}]`
       if (parsed.type === 'image' || parsed.photoUrl || parsed.imageUrl) return '[Hình ảnh]'
       if (parsed.type === 'file') return `[Tập tin: ${parsed.name || 'File'}]`
       if (parsed.href || parsed.thumb || parsed.url) return '[Hình ảnh]'
@@ -281,6 +283,61 @@ function renderMessageContent(
       )
     }
 
+    // LINK PREVIEW - Render link with preview card
+    if (parsedObj.type === 'link') {
+      const linkUrl = parsedObj.url || ''
+      const linkTitle = parsedObj.title || linkUrl
+      const linkDesc = parsedObj.description || ''
+      const linkThumb = parsedObj.thumbnail || ''
+      
+      return (
+        <div className="max-w-xs">
+          <a 
+            href={linkUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block p-3 bg-dark-300/90 border border-sky-500/30 rounded-2xl hover:border-sky-400/50 hover:bg-dark-300 transition-all shadow-md group"
+          >
+            {linkThumb && (
+              <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
+                <img
+                  src={linkThumb}
+                  alt={linkTitle}
+                  className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-200"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    // Just hide the image if it fails to load, don't show error text
+                    const parent = target.parentElement
+                    if (parent) {
+                      parent.style.display = 'none'
+                    }
+                  }}
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <div className="flex items-start gap-2">
+                <span className="text-sky-400 text-sm flex-shrink-0 mt-0.5">🔗</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-white truncate group-hover:text-sky-300 transition-colors">
+                    {linkTitle}
+                  </p>
+                  {linkDesc && (
+                    <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5">
+                      {linkDesc}
+                    </p>
+                  )}
+                  <p className="text-[9px] text-sky-400/70 truncate mt-1 font-mono">
+                    {linkUrl}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      )
+    }
+
     if (isImageObject) {
       return (
         <div className="p-3 bg-dark-300/90 border border-white/15 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
@@ -380,48 +437,71 @@ function renderMessageContent(
     new Set(knownNames.filter((n) => n && typeof n === 'string' && n.trim().length > 0))
   ).sort((a, b) => b.length - a.length)
 
-  // 1. Escaped exact match for known names
-  const escapedNames = validNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  // URL pattern to detect links
+  const urlPattern = /(https?:\/\/[^\s]+)/gi
+  
+  // Split by URLs first
+  const urlParts = textContent.split(urlPattern)
+  const processedParts: (string | React.ReactNode)[] = []
+  
+  urlParts.forEach((part, partIdx) => {
+    // Check if this part is a URL
+    if (part.match(/^https?:\/\//i)) {
+      // This is a URL - render as clickable link
+      processedParts.push(
+        <a
+          key={`url-${partIdx}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-400 hover:text-sky-300 underline font-medium break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      )
+    } else {
+      // This is regular text - process for @mentions
+      // 1. Escaped exact match for known names
+      const escapedNames = validNames.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
 
-  // 2. Title-case multi-word pattern for Vietnamese names:
-  // Starts with @ then uppercase letter word, followed optionally by more uppercase letter words
-  // MUST BE CASE SENSITIVE so it stops at lowercase words like "thế", "xem", "rùi"
-  const upperLetter = '[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ\\u4e00-\\u9fff]'
-  const nameWord = `${upperLetter}[a-zàáảãạăắằẳẵặâấầnẩẫậnđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúũụưứừửữựỳýỷỹỵ0-9_\\u4e00-\\u9fff]*`
-  const titleCasePattern = `${nameWord}(?:\\s+${nameWord})*`
+      // 2. Title-case multi-word pattern for Vietnamese names:
+      const upperLetter = '[A-ZÀÁẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬĐÈÉẺẼẸÊẾỀỂỄỆÌÍỈĨỊÒÓỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢÙÚỦŨỤƯỨỪỬỮỰỲÝỶỸỴ\\u4e00-\\u9fff]'
+      const nameWord = `${upperLetter}[a-zàáảãạăắằẳẵặâấầnẩẫậnđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúũụưứừửữựỳýỷỹỵ0-9_\\u4e00-\\u9fff]*`
+      const titleCasePattern = `${nameWord}(?:\\s+${nameWord})*`
 
-  let patternStr: string
-  if (escapedNames.length > 0) {
-    patternStr = `@(?:${escapedNames.join('|')}|${titleCasePattern}|[^\\s@]+)`
-  } else {
-    patternStr = `@(?:${titleCasePattern}|[^\\s@]+)`
-  }
+      let patternStr: string
+      if (escapedNames.length > 0) {
+        patternStr = `@(?:${escapedNames.join('|')}|${titleCasePattern}|[^\\s@]+)`
+      } else {
+        patternStr = `@(?:${titleCasePattern}|[^\\s@]+)`
+      }
 
-  // NOTE: NO 'i' flag! Case sensitivity is crucial so titleCasePattern stops at lowercase words!
-  const regex = new RegExp(`(${patternStr})(?=\\s|$|[.,!?]|$)`, 'g')
-  const parts: (string | React.ReactNode)[] = []
-  let lastIdx = 0
-  let match: RegExpExecArray | null
+      const regex = new RegExp(`(${patternStr})(?=\\s|$|[.,!?]|$)`, 'g')
+      let lastIdx = 0
+      let match: RegExpExecArray | null
 
-  while ((match = regex.exec(textContent)) !== null) {
-    if (match.index > lastIdx) {
-      parts.push(textContent.substring(lastIdx, match.index))
+      while ((match = regex.exec(part)) !== null) {
+        if (match.index > lastIdx) {
+          processedParts.push(part.substring(lastIdx, match.index))
+        }
+        const mentionText = match[0]
+        processedParts.push(
+          <span
+            key={`mention-${partIdx}-${match.index}`}
+            className="inline-block text-sky-300 font-bold bg-sky-500/25 px-1.5 py-0.5 rounded-md border border-sky-400/40 cursor-pointer hover:underline mx-0.5 shadow-sm"
+          >
+            {mentionText}
+          </span>
+        )
+        lastIdx = regex.lastIndex
+      }
+
+      if (lastIdx < part.length) {
+        processedParts.push(part.substring(lastIdx))
+      }
     }
-    const mentionText = match[0]
-    parts.push(
-      <span
-        key={match.index}
-        className="inline-block text-sky-300 font-bold bg-sky-500/25 px-1.5 py-0.5 rounded-md border border-sky-400/40 cursor-pointer hover:underline mx-0.5 shadow-sm"
-      >
-        {mentionText}
-      </span>
-    )
-    lastIdx = regex.lastIndex
-  }
-
-  if (lastIdx < textContent.length) {
-    parts.push(textContent.substring(lastIdx))
-  }
+  })
 
   // Render with newline preservation
   const renderWithNewlines = (node: string | React.ReactNode, key?: number) => {
@@ -436,8 +516,8 @@ function renderMessageContent(
     ))
   }
 
-  if (parts.length > 0) {
-    return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{parts.map((p, i) => renderWithNewlines(p, i))}</span>
+  if (processedParts.length > 0) {
+    return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{processedParts.map((p, i) => renderWithNewlines(p, i))}</span>
   }
   return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{textContent}</span>
 }
@@ -2238,7 +2318,22 @@ export default function ZaloChatView({
                   {showHeaderActionMenu && (
                     <div
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute right-0 top-full mt-2 w-56 bg-dark-100 border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-[9999] backdrop-blur-xl animate-fadeIn divide-y divide-white/10"
+                      className="
+                        fixed mt-2 w-56 max-w-[calc(100vw-2rem)]
+                        bg-dark-100 border border-white/20 rounded-2xl shadow-2xl overflow-hidden 
+                        z-[9999] backdrop-blur-xl animate-fadeIn divide-y divide-white/10
+                      "
+                      style={{
+                        top: actionMenuRef.current
+                          ? `${actionMenuRef.current.getBoundingClientRect().bottom + 8}px`
+                          : '0px',
+                        left: window.innerWidth < 640
+                          ? '50%'
+                          : actionMenuRef.current
+                            ? `${actionMenuRef.current.getBoundingClientRect().right - 224}px`
+                            : '0px',
+                        transform: window.innerWidth < 640 ? 'translateX(-50%)' : 'none'
+                      }}
                     >
                       <button
                         type="button"

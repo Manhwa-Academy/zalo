@@ -148,7 +148,7 @@ export class UserManager {
   }
 
   /**
-   * Lưu Zalo session của user
+   * Lưu Zalo session của user (dùng UPSERT để tránh duplicate)
    */
   static async saveZaloSession(
     userId: string,
@@ -163,8 +163,8 @@ export class UserManager {
          VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
          ON CONFLICT (user_id)
          DO UPDATE SET 
-           session_data = $2,
-           user_info = $3,
+           session_data = EXCLUDED.session_data,
+           user_info = EXCLUDED.user_info,
            is_active = true,
            updated_at = CURRENT_TIMESTAMP`,
         [userId, JSON.stringify(sessionData), userInfo ? JSON.stringify(userInfo) : null]

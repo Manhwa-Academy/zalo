@@ -166,7 +166,14 @@ ${contextInfo}${styleReference}
 - KHÔNG thêm "Bạn cần gì thêm không?" hay câu hỏi ngược
 - KHÔNG viết dài dòng, chỉ cần đủ nghĩa
 - KHÔNG copy nguyên văn tin nhắn mẫu, hãy sáng tạo dựa trên phong cách
-- Dùng emoji phù hợp nhưng không quá nhiều (1-2 emoji)`
+- Dùng emoji phù hợp nhưng không quá nhiều (1-2 emoji)
+
+📸 KHI NHẬN STICKER/HÌNH ẢNH/LINK/FILE:
+- Sticker: Phản ứng tự nhiên (vd: "Haha dễ thương quá!", "😄", "Cảm ơn nha!")
+- Hình ảnh: Khen ngợi/bình luận (vd: "Đẹp quá!", "Ảnh này chụp ở đâu vậy?", "👍")
+- Link: Cảm ơn chia sẻ (vd: "Thanks! Để mình xem nhé", "Hay đấy!")
+- File: Xác nhận nhận (vd: "Đã nhận rồi nha!", "Cảm ơn đã gửi!")
+- TRẢ LỜI NGẮN GỌN, TỰ NHIÊN như chat thường ngày`
 }
 
 /**
@@ -214,16 +221,38 @@ export function buildConversationHistory(
 }
 
 /**
- * Extract text content from message (handle stickers, images, etc.)
+ * Extract text content from message (handle stickers, images, links, files)
  */
 function extractTextContent(content: string): string {
   if (!content) return '[tin nhắn trống]'
   
   try {
     const parsed = JSON.parse(content)
-    if (parsed.type === 'sticker') return '[sticker]'
-    if (parsed.type === 'image') return parsed.caption || '[hình ảnh]'
-    if (parsed.type === 'file') return `[file: ${parsed.name}]`
+    
+    // Sticker
+    if (parsed.type === 'sticker') {
+      return '[gửi sticker]'
+    }
+    
+    // Image with caption
+    if (parsed.type === 'image') {
+      const caption = parsed.caption ? ` "${parsed.caption}"` : ''
+      return `[gửi hình ảnh${caption}]`
+    }
+    
+    // Link with title
+    if (parsed.type === 'link') {
+      const title = parsed.title ? ` "${parsed.title}"` : ''
+      const url = parsed.url ? ` (${parsed.url})` : ''
+      return `[chia sẻ link${title}${url}]`
+    }
+    
+    // File
+    if (parsed.type === 'file') {
+      const fileName = parsed.name ? ` "${parsed.name}"` : ''
+      return `[gửi file${fileName}]`
+    }
+    
     return content
   } catch {
     return content
@@ -236,22 +265,89 @@ function extractTextContent(content: string): string {
 export function shouldUseAIReply(message: string): boolean {
   const msg = message.toLowerCase().trim()
   
-  // Don't use AI for very short messages
-  if (msg.length < 3) return false
+  // Don't use AI for very short messages (1-2 characters)
+  if (msg.length < 2) return false
   
-  // Don't use AI for stickers/images
-  if (msg.startsWith('{') || msg.startsWith('[')) return false
+  // Check if message is sticker/image/link JSON → USE AI to respond naturally
+  if (msg.startsWith('{') || msg.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(msg)
+      // Use AI for media content (sticker, image, link, file)
+      if (parsed.type === 'sticker') return true  // AI responds to stickers
+      if (parsed.type === 'image') return true    // AI responds to images
+      if (parsed.type === 'link') return true     // AI responds to links
+      if (parsed.type === 'file') return true     // AI responds to files
+      
+      // If JSON but no type, skip AI (might be system message)
+      return false
+    } catch {
+      // If starts with { or [ but not valid JSON, skip
+      return false
+    }
+  }
   
-  // Use AI for questions
-  if (msg.includes('?') || msg.includes('sao') || msg.includes('như thế nào') || msg.includes('khi nào')) {
+  // Use AI for questions (bao gồm các từ hỏi thường dùng)
+  const questionWords = [
+    '?', 'sao', 'tại sao', 'ts', 'vì sao', 'v sao',
+    'như thế nào', 'ntn', 'thế nào', 'tn',
+    'khi nào', 'kn', 'bao giờ', 'bg',
+    'ở đâu', 'đâu', 'chỗ nào',
+    'ai', 'người nào',
+    'bao nhiêu', 'bn', 'giá', 'cost',
+    'có phải', 'có phải không', 'phải không', 'pk',
+    'được không', 'đk', 'ok không', 'okk',
+    'có thể', 'ct', 'có được không',
+    'thế', 'vậy', 'hả', 'hả', 'à', 'ư', 'hử'
+  ]
+  if (questionWords.some(word => msg.includes(word))) {
     return true
   }
   
-  // Use AI for longer messages (>10 words)
-  if (msg.split(/\s+/).length > 10) return true
+  // Use AI for messages with 3+ words (changed from 10)
+  if (msg.split(/\s+/).length >= 3) return true
   
-  // Use AI for specific keywords
-  const aiKeywords = ['giải thích', 'tại sao', 'làm sao', 'help', 'giúp', 'hướng dẫn', 'chi tiết', 'thông tin']
+  // Use AI for specific keywords (bao gồm viết tắt và từ ngữ thông dụng)
+  const aiKeywords = [
+    // Yêu cầu giúp đỡ
+    'giúp', 'help', 'hộ', 'giúp với', 'giúp đỡ',
+    'giải thích', 'gt', 'explain',
+    'hướng dẫn', 'hd', 'chỉ', 'chỉ giúp',
+    'làm sao', 'ls', 'làm thế nào', 'ltn',
+    
+    // Thông tin & chi tiết
+    'tại sao', 'ts', 'vì sao', 'vsao',
+    'chi tiết', 'ct', 'detail',
+    'thông tin', 'tt', 'info', 'thông tin gì',
+    'cho biết', 'cb', 'cho tôi biết',
+    'xem', 'check', 'kiểm tra', 'kt',
+    
+    // Yêu cầu & hành động
+    'cần', 'muốn', 'phải làm', 'cần gì',
+    'cho tôi', 'gửi', 'send',
+    'có', 'có không', 'ck',
+    'được', 'được không', 'đk',
+    
+    // Câu hỏi thân mật
+    'em ơi', 'anh ơi', 'chị ơi',
+    'bạn ơi', 'ơi', 'này',
+    'nghe', 'nghe này', 'biết không',
+    
+    // Câu cảm thán cần phản hồi
+    'ối', 'ôi', 'trời', 'giời',
+    'wow', 'omg', 'wtf', 'lol',
+    'haha', 'hihi', 'huhu', 'hehe',
+    
+    // Các từ thể hiện sự quan tâm
+    'quan tâm', 'care', 'lo lắng', 'll',
+    'nghĩ', 'think', 'opinion',
+    'cảm thấy', 'feel', 'feeling',
+    
+    // Phủ định cần làm rõ
+    'không hiểu', 'kh', 'chẳng hiểu',
+    'không biết', 'kb', 'chả biết',
+    'không rõ', 'ko rõ', 'chưa rõ',
+  ]
+  
   if (aiKeywords.some(keyword => msg.includes(keyword))) {
     return true
   }

@@ -48,7 +48,7 @@ export default function Home() {
     'A-Anou... đừng nói cho mọi người biết nhé... tôi tin bạn đó... 🥺🌸🤍✨',
     'S-Sono... nếu có thể giúp được mọi người thì tôi rất vui... 🍀🤍✨',
   ])
-  const [aiEnabled, setAiEnabled] = useState(false)
+  const [aiEnabled, setAiEnabled] = useState(true) // Default to TRUE
   const [aiPersonality, setAiPersonality] = useState('friendly')
   const [aiMaxLength, setAiMaxLength] = useState(200)
   const [aiTriggerMode, setAiTriggerMode] = useState('smart')
@@ -64,16 +64,28 @@ export default function Home() {
     return new Set()
   })
   const [activeThreadIdFromNotif, setActiveThreadIdFromNotif] = useState<string | null>(null)
+  const [showResetStatsModal, setShowResetStatsModal] = useState(false)
 
   const notifiedMsgIdsRef = useRef<Set<string>>(new Set())
   const isInitialMountRef = useRef<boolean>(true)
+  const loginPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Suppress notifications during initial 4 seconds after page load / F5
   useEffect(() => {
     const timer = setTimeout(() => {
       isInitialMountRef.current = false
     }, 4000)
-    return () => clearTimeout(timer)
+    
+    // Cleanup on unmount
+    return () => {
+      clearTimeout(timer)
+      
+      // Clear login polling interval
+      if (loginPollIntervalRef.current) {
+        clearInterval(loginPollIntervalRef.current)
+        loginPollIntervalRef.current = null
+      }
+    }
   }, [])
 
   // Check authentication status first
@@ -104,11 +116,36 @@ export default function Home() {
     const initPage = async () => {
       setIsCheckingZaloLogin(true)
       try {
-        // 1. Fetch bot settings from server
+        // 1. Fetch user settings from database (includes AI settings)
+        try {
+          const userSettingsRes = await fetch('/api/settings')
+          if (userSettingsRes.ok) {
+            const { settings } = await userSettingsRes.json()
+            console.log('📋 Loaded user settings from database:', settings)
+            
+            // Apply AI settings from database
+            if (typeof settings.aiEnabled === 'boolean') {
+              setAiEnabled(settings.aiEnabled)
+            }
+            if (settings.aiPersonality) {
+              setAiPersonality(settings.aiPersonality)
+            }
+            if (typeof settings.aiMaxLength === 'number') {
+              setAiMaxLength(settings.aiMaxLength)
+            }
+            if (settings.aiTriggerMode) {
+              setAiTriggerMode(settings.aiTriggerMode)
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Could not load user settings from database:', e)
+        }
+
+        // 2. Fetch bot settings from file system (bot config)
         const settingsRes = await fetch('/api/zalo/settings')
         if (settingsRes.ok) {
           const settings = await settingsRes.json()
-          console.log('📋 Loaded bot settings from server:', settings)
+          console.log('📋 Loaded bot settings from file:', settings)
           
           setBotEnabled(settings.enabled ?? false)
           console.log('🔧 Bot enabled state set to:', settings.enabled ?? false)
@@ -127,18 +164,6 @@ export default function Home() {
           }
           if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
             setPresetMessages(settings.presetMessages)
-          }
-          if (typeof settings.aiEnabled === 'boolean') {
-            setAiEnabled(settings.aiEnabled)
-          }
-          if (settings.aiPersonality) {
-            setAiPersonality(settings.aiPersonality)
-          }
-          if (typeof settings.aiMaxLength === 'number') {
-            setAiMaxLength(settings.aiMaxLength)
-          }
-          if (settings.aiTriggerMode) {
-            setAiTriggerMode(settings.aiTriggerMode)
           }
         }
 
@@ -182,9 +207,33 @@ export default function Home() {
     initPage()
   }, [isAuthenticated])
 
+  // Sync AI settings to database on first load if user is authenticated
+  useEffect(() => {
+    if (isAuthenticated && !isCheckingZaloLogin) {
+      // Wait a bit for settings to load, then ensure they're saved to DB
+      const timer = setTimeout(async () => {
+        console.log('🔄 Ensuring AI settings are saved to database...')
+        await syncAISettings({
+          aiEnabled,
+          aiPersonality,
+          aiMaxLength,
+          aiTriggerMode
+        })
+      }, 2000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [isAuthenticated, isCheckingZaloLogin])
+
   // Handle Login via Web QR API with Polling
   const handleLogin = async (force: boolean = false) => {
     setIsLoading(true)
+    
+    // Clear any existing poll interval
+    if (loginPollIntervalRef.current) {
+      clearInterval(loginPollIntervalRef.current)
+      loginPollIntervalRef.current = null
+    }
     
     try {
       // Start QR generation on backend (fire and forget)
@@ -195,7 +244,7 @@ export default function Home() {
       }).catch(err => console.error('Login POST error:', err))
 
       // Poll GET endpoint every 1 second to check status
-      const pollInterval = setInterval(async () => {
+      loginPollIntervalRef.current = setInterval(async () => {
         try {
           const res = await fetch('/api/zalo/login')
           const data = await res.json()
@@ -208,7 +257,10 @@ export default function Home() {
           // Check if logged in successfully
           if (data.loggedIn) {
             console.log('✅ Login successful! Redirecting to app...')
-            clearInterval(pollInterval)
+            if (loginPollIntervalRef.current) {
+              clearInterval(loginPollIntervalRef.current)
+              loginPollIntervalRef.current = null
+            }
             setIsLoggedIn(true)
             if (data.userInfo) setUserInfo(data.userInfo)
             setIsLoading(false)
@@ -221,17 +273,23 @@ export default function Home() {
           // Stop polling if error/expired/declined
           if (data.qrState && ['error', 'expired', 'declined'].includes(data.qrState.status)) {
             console.log(`⚠️ QR ${data.qrState.status}, stopping poll`)
-            clearInterval(pollInterval)
+            if (loginPollIntervalRef.current) {
+              clearInterval(loginPollIntervalRef.current)
+              loginPollIntervalRef.current = null
+            }
             setIsLoading(false)
           }
         } catch (e) {
           console.error('Polling error:', e)
         }
-      }, 1000) // Poll every 1 second
+      }, 1000) as unknown as NodeJS.Timeout // Poll every 1 second
 
       // Auto-clear polling after 3 minutes
       setTimeout(() => {
-        clearInterval(pollInterval)
+        if (loginPollIntervalRef.current) {
+          clearInterval(loginPollIntervalRef.current)
+          loginPollIntervalRef.current = null
+        }
         setIsLoading(false)
       }, 180000)
       
@@ -506,7 +564,7 @@ export default function Home() {
     setLastActivity(new Date().toLocaleTimeString('vi-VN'))
   }
 
-  // Sync settings helper
+  // Sync settings helper (for bot config - saved to file)
   const syncSettings = async (updates: Partial<{
     enabled: boolean
     autoReplyMessage: string
@@ -514,10 +572,6 @@ export default function Home() {
     whitelist: string[]
     useRandomPreset: boolean
     presetMessages: string[]
-    aiEnabled: boolean
-    aiPersonality: string
-    aiMaxLength: number
-    aiTriggerMode: string
   }>) => {
     try {
       await fetch('/api/zalo/settings', {
@@ -530,14 +584,66 @@ export default function Home() {
           whitelist: updates.whitelist ?? whitelist,
           useRandomPreset: updates.useRandomPreset ?? useRandomPreset,
           presetMessages: updates.presetMessages ?? presetMessages,
-          aiEnabled: updates.aiEnabled ?? aiEnabled,
-          aiPersonality: updates.aiPersonality ?? aiPersonality,
-          aiMaxLength: updates.aiMaxLength ?? aiMaxLength,
-          aiTriggerMode: updates.aiTriggerMode ?? aiTriggerMode,
         }),
       })
     } catch (error) {
       console.error('Failed to sync bot settings:', error)
+    }
+  }
+
+  // Sync AI settings to database (shared across devices)
+  const syncAISettings = async (updates: Partial<{
+    aiEnabled: boolean
+    aiPersonality: string
+    aiMaxLength: number
+    aiTriggerMode: string
+  }>) => {
+    try {
+      // Fetch current settings from database first
+      const response = await fetch('/api/settings')
+      let currentSettings = {
+        notificationSound: true,
+        replyDelay: 2,
+        learningMode: false,
+        autoMarkRead: true,
+        maxReplyLength: 500,
+        darkMode: true,
+        animations: true,
+        fontSize: 'medium',
+        saveHistory: true,
+        autoDeleteDays: 'never',
+        aiEnabled: true,
+        aiPersonality: 'friendly',
+        aiMaxLength: 200,
+        aiTriggerMode: 'smart',
+      }
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.settings) {
+          // Merge with existing settings
+          currentSettings = { ...currentSettings, ...data.settings }
+        }
+      }
+
+      // Update with new AI values
+      const updatedSettings = {
+        ...currentSettings,
+        aiEnabled: updates.aiEnabled ?? aiEnabled,
+        aiPersonality: updates.aiPersonality ?? aiPersonality,
+        aiMaxLength: updates.aiMaxLength ?? aiMaxLength,
+        aiTriggerMode: updates.aiTriggerMode ?? aiTriggerMode,
+      }
+
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedSettings),
+      })
+      
+      console.log('✅ AI settings synced to database:', updates)
+    } catch (error) {
+      console.error('❌ Failed to sync AI settings:', error)
     }
   }
 
@@ -586,39 +692,49 @@ export default function Home() {
   // AI Settings Handlers
   const handleAIEnabledChange = async (enabled: boolean) => {
     setAiEnabled(enabled)
-    await syncSettings({ aiEnabled: enabled })
+    await syncAISettings({ aiEnabled: enabled })
   }
   
   const handleAIPersonalityChange = async (personality: string) => {
     setAiPersonality(personality)
-    await syncSettings({ aiPersonality: personality })
+    await syncAISettings({ aiPersonality: personality })
   }
   
   const handleAIMaxLengthChange = async (length: number) => {
     setAiMaxLength(length)
-    await syncSettings({ aiMaxLength: length })
+    await syncAISettings({ aiMaxLength: length })
   }
   
   const handleAITriggerModeChange = async (mode: string) => {
     setAiTriggerMode(mode)
-    await syncSettings({ aiTriggerMode: mode })
+    await syncAISettings({ aiTriggerMode: mode })
   }
   
   // Quick actions
   const handleResetStats = async () => {
-    if (confirm('Bạn có chắc muốn reset thống kê?')) {
-      await fetch('/api/zalo/stats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset' }),
-      })
-      
-      setStats({
-        totalMessages: 0,
-        repliedMessages: 0,
-        activeChats: 0,
-      })
-    }
+    setShowResetStatsModal(true)
+  }
+
+  const confirmResetStats = async () => {
+    await fetch('/api/zalo/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset' }),
+    })
+    
+    setStats({
+      totalMessages: 0,
+      repliedMessages: 0,
+      activeChats: 0,
+    })
+    
+    setShowResetStatsModal(false)
+    
+    // Show success toast
+    setToast({
+      message: '✅ Đã reset thống kê thành công',
+      type: 'success',
+    })
   }
   
   const handleExportLogs = () => {
@@ -887,6 +1003,59 @@ export default function Home() {
             window.location.reload()
           }}
         />
+      )}
+
+      {/* Reset Stats Confirmation Modal */}
+      {showResetStatsModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-fadeIn">
+          <div className="bg-dark-200 rounded-2xl border border-red-500/30 p-6 max-w-md w-full mx-4 animate-scaleIn shadow-2xl">
+            <div className="text-center space-y-4">
+              {/* Warning Icon */}
+              <div className="w-16 h-16 mx-auto bg-red-500/20 border-2 border-red-500/50 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              
+              {/* Title */}
+              <h3 className="text-xl font-bold text-white">
+                Xác nhận reset thống kê
+              </h3>
+              
+              {/* Message */}
+              <p className="text-sm text-gray-300">
+                Bạn có chắc chắn muốn reset tất cả thống kê?
+              </p>
+              
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-left">
+                <p className="text-xs text-amber-300">
+                  <strong>⚠️ Cảnh báo:</strong> Hành động này sẽ xóa:
+                </p>
+                <ul className="text-xs text-amber-200 mt-2 space-y-1 ml-4">
+                  <li>• Tổng số tin nhắn</li>
+                  <li>• Số tin nhắn đã phản hồi</li>
+                  <li>• Số cuộc trò chuyện đang hoạt động</li>
+                </ul>
+              </div>
+              
+              {/* Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowResetStatsModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-dark-300 hover:bg-dark-200 border border-white/10 text-white rounded-lg font-semibold transition-all"
+                >
+                  Hủy
+                </button>
+                <button
+                  onClick={confirmResetStats}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-all shadow-lg"
+                >
+                  Reset thống kê
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   )

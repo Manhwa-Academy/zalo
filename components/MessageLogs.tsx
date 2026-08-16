@@ -122,10 +122,10 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xl font-bold">Lịch sử tin nhắn</h3>
-          <p className="text-sm text-gray-400">Theo dõi tin nhắn đến và phản hồi tự động</p>
+          <p className="text-sm text-gray-400">Tin nhắn đến từ người khác và phản hồi tự động</p>
         </div>
         <span className="badge bg-primary/20 text-primary">
-          {logs.length} tin nhắn
+          {logs.filter((l: any) => !l.isSelf && !l.isUndo).length} tin nhắn
         </span>
       </div>
       
@@ -143,6 +143,10 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
         ) : (
           logs
             .filter((log) => {
+              // Filter out messages sent by self (only show incoming messages)
+              if ((log as any).isSelf) {
+                return false
+              }
               // Filter out undo event messages (JSON arrays with actionType)
               if (typeof log.content === 'string') {
                 const trimmed = log.content.trim()
@@ -232,10 +236,10 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
         )}
       </div>
       
-      {logs.length > 0 && (
+      {logs.filter((l: any) => !l.isSelf && !l.isUndo).length > 0 && (
         <div className="mt-4 pt-4 border-t border-dark-300 text-center">
           <p className="text-xs text-gray-500">
-            Hiển thị {logs.length} tin nhắn gần nhất
+            Hiển thị {logs.filter((l: any) => !l.isSelf && !l.isUndo).length} tin nhắn đến gần nhất
           </p>
         </div>
       )}

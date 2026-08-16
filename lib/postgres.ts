@@ -10,11 +10,73 @@ const pool = process.env.DATABASE_URL
       ssl: {
         rejectUnauthorized: false,
       },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000,
+      max: 10, // Maximum 10 connections
+      min: 2, // Keep at least 2 connections alive
+      idleTimeoutMillis: 30000, // Close idle connections after 30s
+      connectionTimeoutMillis: 10000, // Wait up to 10s for connection (increased from 2s for Render.com)
+      statement_timeout: 10000, // Query timeout 10s
+      query_timeout: 10000, // Query timeout 10s
     })
   : null;
+
+// Handle pool errors (only log actual errors, not normal operations)
+if (pool) {
+  pool.on('error', (err) => {
+    console.error('❌ [Postgres] Unexpected pool error:', err.message)
+  })
+  
+  // Removed 'connect' and 'remove' event logs to reduce noise
+}
+
+// Retry helper for database queries with exponential backoff
+export async function queryWithRetry<T = any>(
+  queryText: string,
+  params?: any[],
+  maxRetries = 3
+): Promise<T> {
+  if (!pool) {
+    throw new Error('Database pool not initialized')
+  }
+
+  let lastError: Error | null = null
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await pool.query(queryText, params)
+      if (attempt > 1) {
+        console.log(`✅ [Postgres] Query succeeded on attempt ${attempt}`)
+      }
+      return result as T
+    } catch (error: any) {
+      lastError = error
+      
+      // Don't retry on syntax errors or constraint violations
+      if (
+        error.code === '42601' || // syntax_error
+        error.code === '23505' || // unique_violation
+        error.code === '23503'    // foreign_key_violation
+      ) {
+        throw error
+      }
+      
+      // Log retry attempt
+      console.warn(
+        `⚠️ [Postgres] Query failed (attempt ${attempt}/${maxRetries}):`,
+        error.message
+      )
+      
+      // Wait before retry with exponential backoff
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000) // Max 5s
+        console.log(`⏳ [Postgres] Retrying in ${delay}ms...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+  }
+  
+  // All retries failed
+  throw lastError || new Error('Query failed after retries')
+}
 
 // Tạo bảng cho multi-user system
 async function initDatabase() {

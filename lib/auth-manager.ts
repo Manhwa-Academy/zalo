@@ -127,6 +127,7 @@ export class AuthManager {
 
   /**
    * Create a new session for user (after successful login)
+   * Auto-cleanup old sessions to prevent accumulation
    */
   static async createSession(
     userId: string,
@@ -138,13 +139,45 @@ export class AuthManager {
     if (!pool) throw new Error('Database not configured');
 
     try {
-      // Generate unique session token
+      // Step 1: Cleanup old sessions first
+      // Delete expired sessions
+      await pool.query(
+        `DELETE FROM auth_sessions 
+         WHERE user_id = $1 AND expires_at < NOW()`,
+        [userId]
+      );
+
+      // Delete inactive sessions older than 24 hours
+      await pool.query(
+        `DELETE FROM auth_sessions 
+         WHERE user_id = $1 
+         AND is_active = false 
+         AND last_active < NOW() - INTERVAL '24 hours'`,
+        [userId]
+      );
+
+      // Keep only 3 most recent active sessions per user
+      await pool.query(
+        `DELETE FROM auth_sessions
+         WHERE user_id = $1
+         AND id NOT IN (
+           SELECT id FROM auth_sessions
+           WHERE user_id = $1
+           AND is_active = true
+           ORDER BY last_active DESC
+           LIMIT 3
+         )`,
+        [userId, userId]
+      );
+
+      // Step 2: Generate unique session token
       const sessionToken = uuidv4() + '-' + Date.now();
 
       // Calculate expiry
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + expiryDays);
 
+      // Step 3: Create new session
       await pool.query(
         `INSERT INTO auth_sessions 
          (user_id, session_token, device_info, ip_address, user_agent, expires_at)
@@ -400,6 +433,7 @@ export class AuthManager {
 
   /**
    * Log authentication event (for audit)
+   * Keeps only latest login and logout record per user to avoid clutter
    */
   static async logAuthEvent(
     userId: string,
@@ -413,6 +447,17 @@ export class AuthManager {
     if (!pool) return;
 
     try {
+      // Strategy: Keep only 1 latest record per action type
+      // Delete old records of same action type for this user
+      await pool.query(
+        `DELETE FROM auth_login_history 
+         WHERE user_id = $1 
+         AND action = $2
+         AND created_at < NOW() - INTERVAL '1 minute'`,
+        [userId, action]
+      );
+
+      // Insert new record
       await pool.query(
         `INSERT INTO auth_login_history 
          (user_id, action, ip_address, user_agent, device_info, success, error_message)

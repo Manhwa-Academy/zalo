@@ -6,16 +6,65 @@ interface HeaderProps {
   onLogoutAllDevices?: () => void
 }
 
+interface AppSettings {
+  notificationSound: boolean
+  replyDelay: number
+  learningMode: boolean
+  autoMarkRead: boolean
+  maxReplyLength: number
+  darkMode: boolean
+  animations: boolean
+  fontSize: string
+  saveHistory: boolean
+  autoDeleteDays: string
+}
+
 export default function Header({ userInfo, onLogout, onLogoutAllDevices }: HeaderProps) {
   const [notifPermission, setNotifPermission] = useState<string>('default')
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  
+  // Settings state
+  const [settings, setSettings] = useState<AppSettings>({
+    notificationSound: true,
+    replyDelay: 2,
+    learningMode: false,
+    autoMarkRead: true,
+    maxReplyLength: 500,
+    darkMode: true,
+    animations: true,
+    fontSize: 'medium',
+    saveHistory: true,
+    autoDeleteDays: 'never'
+  })
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission)
     }
+    
+    // Load settings from database
+    loadSettingsFromDatabase()
   }, [])
+
+  const loadSettingsFromDatabase = async () => {
+    try {
+      const response = await fetch('/api/settings')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.settings) {
+          setSettings(data.settings)
+          console.log('✅ [Header] Loaded settings from database:', data.settings)
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Header] Failed to load settings:', error)
+    } finally {
+      setIsLoadingSettings(false)
+    }
+  }
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -57,9 +106,69 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
 
   const handleSettings = () => {
     setShowUserMenu(false)
-    // Navigate to settings - can be extended later
-    alert('Tính năng cài đặt đang được phát triển')
+    setShowSettingsModal(true)
   }
+
+  const saveSettings = async () => {
+    try {
+      // Save to database
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save settings')
+      }
+
+      // Apply settings
+      applySettings()
+      
+      // Close modal
+      setShowSettingsModal(false)
+      
+      // Show success notification
+      if (notifPermission === 'granted') {
+        try {
+          new Notification('⚙️ Cài đặt đã lưu', {
+            body: 'Các thay đổi đã được đồng bộ tới tất cả thiết bị!',
+            icon: '/aris.png',
+          })
+        } catch (e) {}
+      }
+
+      console.log('✅ [Header] Settings saved to database')
+    } catch (error) {
+      console.error('❌ [Header] Failed to save settings:', error)
+      alert('Lỗi: Không thể lưu cài đặt. Vui lòng thử lại!')
+    }
+  }
+
+  const applySettings = () => {
+    // Apply font size to body
+    document.body.classList.remove('text-sm', 'text-base', 'text-lg')
+    if (settings.fontSize === 'small') document.body.classList.add('text-sm')
+    else if (settings.fontSize === 'large') document.body.classList.add('text-lg')
+    else document.body.classList.add('text-base')
+
+    // Apply animations
+    if (!settings.animations) {
+      document.body.classList.add('no-animations')
+    } else {
+      document.body.classList.remove('no-animations')
+    }
+
+    // Store settings globally for other components to access
+    if (typeof window !== 'undefined') {
+      (window as any).zaloBotSettings = settings
+    }
+  }
+
+  // Apply settings on mount and when settings change
+  useEffect(() => {
+    applySettings()
+  }, [settings])
 
   return (
     <header className="card mb-2 flex flex-col sm:flex-row items-center justify-between gap-2 p-2 sm:p-3">
@@ -153,6 +262,279 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-4 animate-fadeIn" onClick={() => setShowSettingsModal(false)}>
+          <div className="bg-dark-100 border border-white/20 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-primary/20 to-secondary/20 border-b border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⚙️</span>
+                <h2 className="text-xl font-bold text-white">Cài đặt</h2>
+              </div>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-gray-300 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-5">
+              {/* Notification Settings */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🔔</span>
+                  <span>Thông báo</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">Thông báo trình duyệt</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Nhận thông báo khi có tin nhắn mới</p>
+                    </div>
+                    <button
+                      onClick={requestNotifPermission}
+                      className={`px-4 py-2 rounded-lg text-xs font-medium transition-all ${
+                        notifPermission === 'granted'
+                          ? 'bg-success/20 border border-success/40 text-success'
+                          : 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
+                      }`}
+                    >
+                      {notifPermission === 'granted' ? '✅ Đã bật' : 'Bật thông báo'}
+                    </button>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Âm thanh thông báo</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Phát âm thanh khi có tin nhắn</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={settings.notificationSound}
+                        onChange={(e) => setSettings({...settings, notificationSound: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Auto Reply Settings */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🤖</span>
+                  <span>Tự động trả lời</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">Độ trễ phản hồi</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Thời gian chờ trước khi bot trả lời</p>
+                    </div>
+                    <select 
+                      className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none"
+                      value={settings.replyDelay}
+                      onChange={(e) => setSettings({...settings, replyDelay: Number(e.target.value)})}
+                    >
+                      <option value="0">Ngay lập tức</option>
+                      <option value="2">2 giây</option>
+                      <option value="5">5 giây</option>
+                      <option value="10">10 giây</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Chế độ học tập</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Bot sẽ chỉ ghi nhận tin nhắn, không trả lời</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={settings.learningMode}
+                        onChange={(e) => setSettings({...settings, learningMode: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Độ dài trả lời tối đa</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Giới hạn số ký tự trong phản hồi của bot</p>
+                    </div>
+                    <input
+                      type="number"
+                      min="100"
+                      max="2000"
+                      step="50"
+                      value={settings.maxReplyLength}
+                      onChange={(e) => setSettings({...settings, maxReplyLength: Number(e.target.value)})}
+                      className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none w-24 text-right"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Tự động xác nhận đã đọc</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Đánh dấu tin nhắn là đã đọc tự động</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={settings.autoMarkRead}
+                        onChange={(e) => setSettings({...settings, autoMarkRead: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Display Settings */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🎨</span>
+                  <span>Giao diện</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">Chế độ tối</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Giao diện tối bảo vệ mắt</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" defaultChecked disabled />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary opacity-50"></div>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500 italic">Hiện tại chỉ hỗ trợ chế độ tối</p>
+                  
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Hiệu ứng động</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Animation và hiệu ứng chuyển cảnh</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={settings.animations}
+                        onChange={(e) => setSettings({...settings, animations: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Kích thước chữ</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Điều chỉnh cỡ chữ hiển thị</p>
+                    </div>
+                    <select 
+                      className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none"
+                      value={settings.fontSize}
+                      onChange={(e) => setSettings({...settings, fontSize: e.target.value})}
+                    >
+                      <option value="small">Nhỏ</option>
+                      <option value="medium">Trung bình</option>
+                      <option value="large">Lớn</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data & Privacy */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>🔒</span>
+                  <span>Dữ liệu & Bảo mật</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">Lưu lịch sử tin nhắn</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Lưu trữ tin nhắn để xem lại sau</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={settings.saveHistory}
+                        onChange={(e) => setSettings({...settings, saveHistory: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                    <div>
+                      <p className="text-sm font-medium text-white">Tự động xóa tin nhắn cũ</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Xóa tin nhắn sau một khoảng thời gian</p>
+                    </div>
+                    <select 
+                      className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none"
+                      value={settings.autoDeleteDays}
+                      onChange={(e) => setSettings({...settings, autoDeleteDays: e.target.value})}
+                    >
+                      <option value="never">Không bao giờ</option>
+                      <option value="7">7 ngày</option>
+                      <option value="30">30 ngày</option>
+                      <option value="90">90 ngày</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* About */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>ℹ️</span>
+                  <span>Thông tin</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-gray-400">Phiên bản</span>
+                    <span className="text-xs font-mono text-white">v1.0.0</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                    <span className="text-xs text-gray-400">Người dùng</span>
+                    <span className="text-xs text-white">{userInfo?.displayName || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                    <span className="text-xs text-gray-400">Số điện thoại</span>
+                    <span className="text-xs font-mono text-white">{userInfo?.phoneNumber || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-dark-200/50 border-t border-white/10 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-dark-300 hover:bg-dark-200 text-white text-sm font-medium transition-all border border-white/10"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={saveSettings}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:brightness-110 text-white text-sm font-medium transition-all shadow-lg"
+              >
+                💾 Lưu thay đổi
+              </button>
+            </div>
           </div>
         </div>
       )}

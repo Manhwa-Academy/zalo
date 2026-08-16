@@ -6,6 +6,7 @@
 import { Zalo } from 'zca-js';
 import { getSessionId } from './session-cookie';
 import { UserManager } from './user-manager';
+import pool from './postgres';
 
 // Map lưu Zalo instances theo userId
 const zaloInstances = new Map<string, any>();
@@ -13,12 +14,37 @@ const zaloUserInfos = new Map<string, any>();
 
 /**
  * Lấy userId của user hiện tại
+ * Nếu đã có user với Zalo account này → dùng lại user cũ
+ * Không tạo user mới khi login từ thiết bị khác
  */
 export async function getCurrentUserId(): Promise<string> {
   const sessionId = getSessionId();
   console.log(`🔍 [MultiUser] Getting user for session: ${sessionId}`);
+  
+  // Bước 1: Kiểm tra xem session này đã có user chưa
+  const existingUserResult = await pool?.query(
+    'SELECT * FROM users WHERE session_id = $1',
+    [sessionId]
+  );
+  
+  if (existingUserResult && existingUserResult.rows.length > 0) {
+    const userId = existingUserResult.rows[0].id;
+    console.log(`✅ [MultiUser] User ID: ${userId} (from existing session)`);
+    
+    // Update last_active
+    await pool?.query(
+      'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1',
+      [userId]
+    );
+    
+    return userId;
+  }
+  
+  // Bước 2: Session chưa có user → Tạo user mới CHỈ 1 LẦN
+  // (Login lần đầu hoặc logout rồi login lại)
   const user = await UserManager.getOrCreateUser(sessionId);
-  console.log(`👤 [MultiUser] User ID: ${user.id}`);
+  
+  console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
   return user.id;
 }
 
@@ -97,12 +123,17 @@ export async function getCurrentZaloUserInfo(): Promise<any | null> {
 
 /**
  * Set user info cho user hiện tại
+ * CHỈ lưu vào memory và DB, KHÔNG tạo user mới nữa
  */
 export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
   const userId = await getCurrentUserId();
+  
+  console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}`, userInfo);
+  
+  // Lưu vào memory
   zaloUserInfos.set(userId, userInfo);
   
-  // Update vào DB
+  // Update vào DB (UPSERT zalo_sessions)
   try {
     const zaloApi = zaloInstances.get(userId);
     if (zaloApi) {
@@ -118,11 +149,15 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
           userAgent: ctx.userAgent,
           language: ctx.language || 'vi',
         };
+        
+        // UPSERT: Nếu user_id đã có zalo_session → Update, nếu chưa → Insert
         await UserManager.saveZaloSession(userId, credentials, userInfo);
+        console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
       }
     }
   } catch (error) {
-    console.error('Failed to update user info in DB:', error);
+    console.error('❌ [MultiUser] Failed to update user info in DB:', error);
+    throw error;
   }
 }
 

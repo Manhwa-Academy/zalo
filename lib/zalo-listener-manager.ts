@@ -86,50 +86,63 @@ export function markMessageUndone(msgId: string, cliMsgId: string, threadId: str
   console.log(`   threadId: "${tIdStr}"`)
   console.log(`   Total messages in queue: ${messageQueue.length}`)
 
-  // Try multiple matching strategies
+  // Try multiple matching strategies with expanded fields
   let targetMsg = messageQueue.find(
     (m) => {
-      // Log each message being checked for debugging
       const matches = 
+        // Try msgId
         (mIdStr && m.msgId && String(m.msgId) === mIdStr) ||
-        (cIdStr && m.cliMsgId && String(m.cliMsgId) === cIdStr) ||
         (mIdStr && m.id && String(m.id) === mIdStr) ||
+        (mIdStr && (m as any).globalMsgId && String((m as any).globalMsgId) === mIdStr) ||
+        // Try cliMsgId
+        (cIdStr && m.cliMsgId && String(m.cliMsgId) === cIdStr) ||
         (cIdStr && m.id && String(m.id) === cIdStr) ||
-        // Try matching globalMsgId field too
-        (mIdStr && (m as any).globalMsgId && String((m as any).globalMsgId) === mIdStr)
+        // Try matching in content (for link messages that might have msgId in content)
+        (mIdStr && typeof m.content === 'string' && m.content.includes(mIdStr))
       
       if (matches) {
-        console.log(`✅ Found matching message:`, m)
+        console.log(`✅ Found matching message:`, {
+          id: m.id,
+          msgId: m.msgId,
+          cliMsgId: m.cliMsgId,
+          content: String(m.content).slice(0, 100)
+        })
       }
       return matches
     }
   )
 
   if (targetMsg) {
-    console.log(`✅ [markMessageUndone] Found target message by ID, marking as undone`)
+    console.log(`✅ [markMessageUndone] Found target message, marking as undone`)
     targetMsg.content = '🔄 Tin nhắn đã được thu hồi'
     targetMsg.isUndo = true
   } else {
-    console.log(`⚠️ [markMessageUndone] Message not found by ID, trying to find latest self message in thread "${tIdStr}"`)
+    console.log(`⚠️ [markMessageUndone] Message not found by ID, trying to find latest message in thread "${tIdStr}"`)
     
-    // If not found in queue, update latest self message in that thread
-    const threadMessages = messageQueue.filter((m) => String(m.threadId) === tIdStr && m.isSelf)
-    console.log(`   Found ${threadMessages.length} self messages in this thread`)
+    // Fallback: Find latest message in this thread (not just self messages)
+    const threadMessages = messageQueue.filter((m) => String(m.threadId) === tIdStr)
+    console.log(`   Found ${threadMessages.length} messages in this thread`)
     
     if (threadMessages.length > 0) {
+      // Get the most recent message (last in array)
       targetMsg = threadMessages[threadMessages.length - 1]
-      console.log(`✅ [markMessageUndone] Using latest self message:`, targetMsg)
+      console.log(`✅ [markMessageUndone] Using latest message in thread:`, {
+        id: targetMsg.id,
+        content: String(targetMsg.content).slice(0, 100),
+        timestamp: targetMsg.timestamp
+      })
       targetMsg.content = '🔄 Tin nhắn đã được thu hồi'
       targetMsg.isUndo = true
     } else {
-      console.log(`❌ [markMessageUndone] No self messages found in thread "${tIdStr}"`)
+      console.log(`❌ [markMessageUndone] No messages found in thread "${tIdStr}"`)
     }
   }
 
+  // Save to file
   saveStoredMessages()
 
   if (targetMsg) {
-    // Broadcast the updated message preserving isSelf and sender info
+    // Broadcast the updated message
     sseClients.forEach((client) => {
       try {
         client.controller.enqueue(`data: ${JSON.stringify(targetMsg)}\n\n`)
@@ -143,6 +156,19 @@ export function markMessageUndone(msgId: string, cliMsgId: string, threadId: str
 
 export function addSseClient(controller: ReadableStreamDefaultController): number {
   const id = ++clientCounter
+  
+  // Limit max connections to 3 per user to prevent memory leak
+  const MAX_CLIENTS = 3
+  if (sseClients.length >= MAX_CLIENTS) {
+    console.warn(`⚠️ [SSE] Max clients (${MAX_CLIENTS}) reached, removing oldest client`)
+    const oldestClient = sseClients.shift()
+    if (oldestClient) {
+      try {
+        oldestClient.controller.close()
+      } catch (e) {}
+    }
+  }
+  
   sseClients.push({ id, controller })
 
   // Instantly push initial batch of stored messages to newly connected SSE client
@@ -152,6 +178,7 @@ export function addSseClient(controller: ReadableStreamDefaultController): numbe
     })
   } catch (e) {}
 
+  console.log(`🔍 [SSE] New client connected (ID: ${id}), total clients: ${sseClients.length}`)
   return id
 }
 
@@ -307,13 +334,29 @@ export function attachListenerToApi(zaloApi: any) {
 
     // Process each undo event
     for (const event of undoEvents) {
-      const mId = String(event?.globalDelMsgId || event?.msgId || event?.data?.msgId || '')
-      const cId = String(event?.clientDelMsgId || event?.cliMsgId || event?.data?.cliMsgId || '')
-      const tId = String(event?.destId || event?.threadId || event?.grid || event?.data?.threadId || event?.uidTo || '')
+      // IMPORTANT: In undo events, the actual message IDs are in content object!
+      const contentData = event?.content || event?.data?.content || {}
       
-      if (tId) {
-        console.log(`🔄 Processing undo: msgId=${mId}, cliMsgId=${cId}, threadId=${tId}`)
+      // Try to get message IDs from content first (most reliable)
+      let mId = String(contentData?.globalMsgId || contentData?.msgId || '')
+      let cId = String(contentData?.cliMsgId || contentData?.clientMsgId || '')
+      
+      // Fallback to event-level IDs if not found in content
+      if (!mId) mId = String(event?.globalDelMsgId || event?.msgId || event?.data?.msgId || '')
+      if (!cId) cId = String(event?.clientDelMsgId || event?.cliMsgId || event?.data?.cliMsgId || '')
+      
+      // Thread ID
+      const tId = String(contentData?.destId || event?.destId || event?.threadId || event?.grid || event?.data?.threadId || event?.idTo || event?.data?.idTo || '')
+      
+      console.log(`🔄 Processing undo event:`)
+      console.log(`   Original msgId (from content.globalMsgId): ${mId}`)
+      console.log(`   Original cliMsgId (from content.cliMsgId): ${cId}`)
+      console.log(`   ThreadId (from content.destId): ${tId}`)
+      
+      if (tId && (mId || cId)) {
         markMessageUndone(mId, cId, tId)
+      } else {
+        console.log(`⚠️ Could not extract message IDs from undo event`)
       }
     }
   })
@@ -395,7 +438,32 @@ export function attachListenerToApi(zaloApi: any) {
           catId: catId,
           url: stkUrl,
         })
-      } else if (rawContent.type === 'image' || rawContent.photoUrl || rawContent.imageUrl || rawContent.href || rawContent.thumb || rawContent.url) {
+      } else if (
+        // Link preview detection - prioritize over image detection
+        rawContent.type === 'link' || 
+        rawContent.link || 
+        (rawContent.href && rawContent.title) ||
+        (rawContent.url && rawContent.title && rawContent.description) ||
+        (rawContent.href && /^https?:\/\//.test(rawContent.href) && rawContent.thumb && rawContent.title)
+      ) {
+        // Link preview - extract actual link and metadata
+        const linkUrl = rawContent.href || rawContent.url || rawContent.link || ''
+        const linkTitle = rawContent.title || rawContent.name || linkUrl || ''
+        const linkThumb = rawContent.thumb || rawContent.thumbnail || rawContent.image || ''
+        const linkDesc = rawContent.description || rawContent.desc || ''
+        
+        rawContent = JSON.stringify({
+          type: 'link',
+          url: linkUrl,
+          title: linkTitle,
+          description: linkDesc,
+          thumbnail: linkThumb,
+        })
+        console.log(`🔗 [Listener] Parsed link preview: ${linkTitle} - ${linkUrl}`)
+      } else if (rawContent.type === 'image' || rawContent.photoUrl || rawContent.imageUrl || 
+                 (rawContent.href && !rawContent.title) || // href without title = image URL
+                 (rawContent.thumb && !rawContent.title) || // thumb without title = image URL
+                 (rawContent.url && !rawContent.title && !rawContent.description)) { // url without title/desc = image URL
         // Image/GIF content - preserve URL
         const imgUrl = rawContent.url || rawContent.href || rawContent.thumb || rawContent.photoUrl || rawContent.imageUrl || rawContent.hdUrl || ''
         const imgName = rawContent.name || rawContent.fileName || ''

@@ -33,7 +33,7 @@ export default function AISettings({
   ]
 
   const triggerModes = [
-    { value: 'smart', label: '🧠 Thông minh', desc: 'Tự động phát hiện câu hỏi & tin dài' },
+    { value: 'smart', label: '🧠 Thông minh', desc: 'Tự động phát hiện câu hỏi & tin >= 3 từ' },
     { value: 'questions', label: '❓ Chỉ câu hỏi', desc: 'Chỉ reply khi có dấu ?' },
     { value: 'always', label: '⚡ Luôn luôn', desc: 'Mọi tin nhắn đều dùng AI' },
     { value: 'manual', label: '✋ Thủ công', desc: 'Chỉ khi bật AI manually' },
