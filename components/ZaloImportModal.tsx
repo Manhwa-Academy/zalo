@@ -52,17 +52,17 @@ export default function ZaloImportModal({ onClose, onSuccess }: ZaloImportModalP
       if (response.ok) {
         console.log('✅ [Frontend] Import successful')
         
-        // Show custom success modal instead of alert
+        // Show custom success modal
         setSuccessDetails({
           hasSettings: !!botSettings,
           messageCount: messages?.length || 0,
         })
         setShowSuccess(true)
         
-        // Auto reload after 2 seconds
+        // Close modal and reload session immediately after showing success
         setTimeout(() => {
-          window.location.reload()
-        }, 2000)
+          onSuccess() // This will close QR modal and reload Zalo session
+        }, 1500) // Shorter delay - just enough to see success message
       } else {
         setError(data.error || 'Nhập tài khoản thất bại')
       }
@@ -136,7 +136,7 @@ export default function ZaloImportModal({ onClose, onSuccess }: ZaloImportModalP
               {/* Loading */}
               <div className="flex items-center justify-center gap-2 text-gray-300">
                 <div className="w-4 h-4 border-2 border-gray-400 border-t-white rounded-full animate-spin"></div>
-                <span className="text-sm">Đang tải lại trang...</span>
+                <span className="text-sm">Đang tải giao diện chat...</span>
               </div>
             </div>
           </div>
