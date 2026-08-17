@@ -106,8 +106,9 @@ export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
 
 /**
  * Xóa Zalo API instance của user hiện tại
+ * @param deleteFromDB - Có xóa session khỏi database không (default: true)
  */
-export async function clearCurrentZaloApi(): Promise<void> {
+export async function clearCurrentZaloApi(deleteFromDB: boolean = true): Promise<void> {
   const userId = await getCurrentUserId();
   
   // Stop listener first
@@ -122,10 +123,13 @@ export async function clearCurrentZaloApi(): Promise<void> {
   zaloInstances.delete(userId);
   zaloUserInfos.delete(userId);
   
-  // Delete session from database (including appState)
-  await UserManager.deleteZaloSession(userId);
-  
-  console.log(`✅ Cleared Zalo API and DB session for user: ${userId}`);
+  // Delete session from database (optional)
+  if (deleteFromDB) {
+    await UserManager.deleteZaloSession(userId);
+    console.log(`✅ Cleared Zalo API and DB session for user: ${userId}`);
+  } else {
+    console.log(`✅ Cleared Zalo API from memory (kept DB session) for user: ${userId}`);
+  }
 }
 
 /**

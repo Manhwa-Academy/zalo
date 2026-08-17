@@ -246,27 +246,27 @@ export default function Home() {
           qrStatus: loginData.qrState?.status
         })
         
-        // If already logged in (has session from DB), restore it
-        if (loginData.loggedIn && loginData.userInfo) {
-          console.log('✅ [Init] Found existing Zalo session, auto-login')
-          setIsLoggedIn(true)
-          isLoggedInRef.current = true // Update ref
-          setUserInfo(loginData.userInfo)
-          setQrState(null) // Clear QR state
+        // IMPORTANT: Always logout Zalo when user authenticates
+        // This forces user to scan QR code every time they login with username/password
+        if (loginData.loggedIn) {
+          console.log('🔓 [Init] Found existing Zalo session, logging out to force QR scan...')
           
-          // Start listener automatically
-          setTimeout(() => startListener(), 500)
-        } else {
-          // Not logged in, ready for QR scan
-          console.log('ℹ️ [Init] No session found, ready for QR login')
-          setIsLoggedIn(false)
-          isLoggedInRef.current = false // Update ref
-          setUserInfo(null)
-          
-          if (loginData.qrState) {
-            setQrState(loginData.qrState)
+          try {
+            // Logout Zalo session
+            await fetch('/api/zalo/logout', { method: 'POST' })
+            console.log('✅ [Init] Zalo session cleared')
+          } catch (e) {
+            console.error('❌ [Init] Failed to logout Zalo:', e)
           }
         }
+        
+        // Always require QR login
+        console.log('ℹ️ [Init] User must scan QR code to login Zalo')
+        setIsLoggedIn(false)
+        isLoggedInRef.current = false
+        setUserInfo(null)
+        setQrState(null) // Clear QR state, will generate new one
+        
       } catch (error) {
         console.error('Failed to initialize page state:', error)
       } finally {

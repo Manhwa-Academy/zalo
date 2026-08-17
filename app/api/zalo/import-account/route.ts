@@ -95,6 +95,7 @@ export async function POST(request: Request) {
     const botSettings = body.botSettings
     const messages = body.messages
     const userInfoData = body.userInfo
+    const exportMetadata = body.exportMetadata // Get export metadata
 
     // Validate credentials structure
     if (!credentials || !credentials.cookie || !credentials.imei || !credentials.userAgent) {
@@ -105,12 +106,22 @@ export async function POST(request: Request) {
     }
 
     console.log(`📥 [Import] Starting import for user: ${userId}`)
+    
+    // Get export timestamp (from file metadata if available)
+    const exportTimestamp = exportMetadata?.exportTimestamp || Date.now()
+    const exportedAtDisplay = exportMetadata?.exportedAtLocal || new Date(exportTimestamp).toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour12: false
+    })
+    
+    console.log(`📅 [Import] File exported at: ${exportedAtDisplay}`)
 
     // Create a hash of credentials to detect duplicates
     const credentialsString = JSON.stringify({
       imei: credentials.imei,
       userAgent: credentials.userAgent,
-      cookiePreview: JSON.stringify(credentials.cookie).substring(0, 100)
+      cookiePreview: JSON.stringify(credentials.cookie).substring(0, 100),
+      exportTimestamp, // Include export timestamp in hash
     })
     const crypto = require('crypto')
     const credentialsHash = crypto.createHash('md5').update(credentialsString).digest('hex')
@@ -133,13 +144,17 @@ export async function POST(request: Request) {
       )
       
       if (globalHashCheck.rows.length > 0) {
-        const importedAt = globalHashCheck.rows[0].imported_at
-          ? new Date(globalHashCheck.rows[0].imported_at).toLocaleString('vi-VN')
+        const importedAtRaw = globalHashCheck.rows[0].imported_at
+        const importedAt = importedAtRaw
+          ? new Date(importedAtRaw).toLocaleString('vi-VN', {
+              timeZone: 'Asia/Ho_Chi_Minh',
+              hour12: false
+            })
           : 'trước đó'
         
-        console.log(`⚠️ [Import] This credentials file was already imported globally`)
+        console.log(`⚠️ [Import] This credentials file was already imported globally at ${importedAt}`)
         return NextResponse.json(
-          { error: `⚠️ File này đã được nhập trên thiết bị khác vào lúc ${importedAt}!\n\nKhông thể nhập lại cùng một file trên nhiều thiết bị. Vui lòng export file mới từ thiết bị đang dùng.` },
+          { error: `⚠️ File exported lúc ${exportedAtDisplay} đã được nhập trên thiết bị khác vào lúc ${importedAt}!\n\nKhông thể nhập lại cùng một file trên nhiều thiết bị. Vui lòng export file mới từ thiết bị đang dùng.` },
           { status: 400 }
         )
       }
@@ -150,12 +165,16 @@ export async function POST(request: Request) {
     
     if (existingSession?.userInfo?._importHash && existingSession.userInfo._importHash === credentialsHash) {
       console.log(`⚠️ [Import] This credentials file was already imported before`)
-      const importedAt = existingSession.userInfo._importedAt 
-        ? new Date(existingSession.userInfo._importedAt).toLocaleString('vi-VN')
+      const importedAtRaw = existingSession.userInfo._importedAt
+      const importedAt = importedAtRaw
+        ? new Date(importedAtRaw).toLocaleString('vi-VN', {
+            timeZone: 'Asia/Ho_Chi_Minh',
+            hour12: false
+          })
         : 'trước đó'
       
       return NextResponse.json(
-        { error: `⚠️ File này đã được nhập vào lúc ${importedAt}!\n\nKhông thể nhập lại cùng một file. Vui lòng export file mới hoặc sử dụng file khác.` },
+        { error: `⚠️ File exported lúc ${exportedAtDisplay} đã được nhập vào lúc ${importedAt}!\n\nKhông thể nhập lại cùng một file. Vui lòng export file mới hoặc sử dụng file khác.` },
         { status: 400 }
       )
     }
@@ -182,7 +201,9 @@ export async function POST(request: Request) {
     const userInfoWithHash = {
       ...userInfo,
       _importHash: credentialsHash, // Store hash to detect re-import
-      _importedAt: new Date().toISOString()
+      _importedAt: new Date().toISOString(), // When this file was imported
+      _exportedAt: exportMetadata?.exportedAt || new Date().toISOString(), // When this file was exported
+      _exportTimestamp: exportTimestamp, // Export timestamp for display
     }
     
     // IMPORTANT: Save zaloApi FIRST so it's in memory when we save userInfo

@@ -77,6 +77,16 @@ export async function POST() {
 
     console.log('✅ [Export] Successfully exported full account data')
 
+    // Create export metadata with timestamp
+    const exportMetadata = {
+      exportedAt: new Date().toISOString(),
+      exportedAtLocal: new Date().toLocaleString('vi-VN', { 
+        timeZone: 'Asia/Ho_Chi_Minh',
+        hour12: false 
+      }),
+      exportTimestamp: Date.now(),
+    }
+
     return NextResponse.json({
       success: true,
       credentials,
@@ -95,6 +105,7 @@ export async function POST() {
       } : null,
       messages: messages.slice(-100), // Export last 100 messages only
       userInfo: zaloSession?.userInfo || null,
+      exportMetadata, // Add export metadata
       message: 'Xuất tài khoản thành công!'
     })
   } catch (error: any) {
