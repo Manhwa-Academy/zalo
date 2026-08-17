@@ -63,7 +63,9 @@ function getLastMessagePreview(content: any): string {
 function renderMessageContent(
   content: any,
   knownNames: string[] = [],
-  onMediaClick?: (url: string) => void
+  onMediaClick?: (url: string) => void,
+  mediaCache?: Record<string, string>,
+  setMediaCache?: React.Dispatch<React.SetStateAction<Record<string, string>>>
 ) {
   if (!content) return null
 
@@ -214,11 +216,11 @@ function renderMessageContent(
     if (fileName || giphyId) {
       try {
         // Priority 1: Check component state (mediaCache from database)
-        if (fileName && mediaCache[fileName]) {
+        if (mediaCache && fileName && mediaCache[fileName]) {
           imgUrl = mediaCache[fileName]
           console.log('🎬 Using mediaCache (DB) by filename:', fileName)
         }
-        else if (giphyId && mediaCache[`giphy_id_${giphyId}`]) {
+        else if (mediaCache && giphyId && mediaCache[`giphy_id_${giphyId}`]) {
           imgUrl = mediaCache[`giphy_id_${giphyId}`]
           console.log('🎬 Using mediaCache (DB) by Giphy ID:', giphyId)
         }
@@ -238,7 +240,7 @@ function renderMessageContent(
             console.log('🎬 Using localStorage cache by Giphy ID:', giphyId)
           }
           
-          if (cachedUrl) {
+          if (cachedUrl && setMediaCache) {
             imgUrl = cachedUrl
             // Update mediaCache state for next render
             setMediaCache(prev => ({ ...prev, [fileName || `giphy_id_${giphyId}`]: cachedUrl! }))
@@ -2741,7 +2743,7 @@ export default function ZaloChatView({
                                       ★
                                     </span>
                                   )}
-                                  {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url))}
+                                  {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url), mediaCache, setMediaCache)}
                                 </div>
                               )
                             })()}
