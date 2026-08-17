@@ -213,32 +213,40 @@ function renderMessageContent(
     
     if (fileName || giphyId) {
       try {
-        const giphyCache = JSON.parse(localStorage.getItem('giphy_cache') || '{}')
-        let cachedUrl: string | null = null
-        
-        // Try lookup by filename
-        if (fileName && giphyCache[fileName]) {
-          cachedUrl = giphyCache[fileName]
-          console.log('🎬 Using cached Giphy URL by filename:', fileName)
+        // Priority 1: Check component state (mediaCache from database)
+        if (fileName && mediaCache[fileName]) {
+          imgUrl = mediaCache[fileName]
+          console.log('🎬 Using mediaCache (DB) by filename:', fileName)
         }
-        // Try lookup by Giphy ID
-        else if (giphyId && giphyCache[`giphy_id_${giphyId}`]) {
-          cachedUrl = giphyCache[`giphy_id_${giphyId}`]
-          console.log('🎬 Using cached Giphy URL by ID:', giphyId)
+        else if (giphyId && mediaCache[`giphy_id_${giphyId}`]) {
+          imgUrl = mediaCache[`giphy_id_${giphyId}`]
+          console.log('🎬 Using mediaCache (DB) by Giphy ID:', giphyId)
         }
-        // Try lookup if current URL is Zalo CDN and might be expired
-        else if (imgUrl && (String(imgUrl).includes('dlfl.vn') || String(imgUrl).includes('zaloapp.com'))) {
-          // This is a Zalo CDN URL - try to find Giphy equivalent in cache
-          const possibleKeys = Object.keys(giphyCache).filter(k => k.includes('.gif'))
-          if (possibleKeys.length > 0) {
-            console.log('⚠️ Zalo CDN URL detected, but no cache match found')
+        // Priority 2: Try localStorage cache
+        else {
+          const giphyCache = JSON.parse(localStorage.getItem('giphy_cache') || '{}')
+          let cachedUrl: string | null = null
+          
+          // Try lookup by filename
+          if (fileName && giphyCache[fileName]) {
+            cachedUrl = giphyCache[fileName]
+            console.log('🎬 Using localStorage cache by filename:', fileName)
+          }
+          // Try lookup by Giphy ID
+          else if (giphyId && giphyCache[`giphy_id_${giphyId}`]) {
+            cachedUrl = giphyCache[`giphy_id_${giphyId}`]
+            console.log('🎬 Using localStorage cache by Giphy ID:', giphyId)
+          }
+          
+          if (cachedUrl) {
+            imgUrl = cachedUrl
+            // Update mediaCache state for next render
+            setMediaCache(prev => ({ ...prev, [fileName || `giphy_id_${giphyId}`]: cachedUrl! }))
           }
         }
-        
-        if (cachedUrl) {
-          imgUrl = cachedUrl
-        }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Error loading cached URL:', e)
+      }
     }
 
     const titleText = parsedObj.title || parsedObj.description || parsedObj.caption || parsedObj.text || parsedObj.name || ''
@@ -764,6 +772,14 @@ export default function ZaloChatView({
         giphyCache[fileName] = previewUrl
         giphyCache[`giphy_id_${gif.id}`] = previewUrl // Also save by Giphy ID
         localStorage.setItem('giphy_cache', JSON.stringify(giphyCache))
+        
+        // 🆕 Update component state immediately
+        setMediaCache(prev => ({
+          ...prev,
+          [fileName]: previewUrl,
+          [`giphy_id_${gif.id}`]: previewUrl
+        }))
+        
         console.log(`💾 Cached Giphy URL in localStorage for ${fileName}:`, previewUrl)
         
         // Also save to server database cache with Giphy ID
@@ -867,6 +883,10 @@ export default function ZaloChatView({
             })
             
             localStorage.setItem('giphy_cache', JSON.stringify(merged))
+            
+            // 🆕 Update component state for immediate use
+            setMediaCache(merged)
+            
             console.log('💾 Synced media cache from server:', Object.keys(merged).length, 'entries')
             console.log('📦 Cache sample:', Object.keys(merged).slice(0, 3))
           }
@@ -997,6 +1017,9 @@ export default function ZaloChatView({
 
   // Online / Last Active status tracker state
   const [userLastActiveMap, setUserLastActiveMap] = useState<Record<string, number>>({})
+
+  // Media cache state (for Giphy URLs from database)
+  const [mediaCache, setMediaCache] = useState<Record<string, string>>({})
 
   // Helper to parse arbitrary timestamp format into Unix milliseconds
   const parseTimestamp = (raw: any): number => {
