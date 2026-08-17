@@ -1083,6 +1083,53 @@ export default function ZaloChatView({
     return () => clearInterval(interval)
   }, [activeThreadId, conversations])
 
+  // 🆕 Fetch online status for ALL user conversations (not just active one)
+  useEffect(() => {
+    if (!isLoggedIn || conversations.length === 0) return
+
+    const userConversations = conversations.filter((c) => c.type === 'User')
+    if (userConversations.length === 0) return
+
+    const fetchAllUserStatuses = async () => {
+      // Fetch status for all user conversations in parallel
+      const promises = userConversations.map((conv) =>
+        fetch(`/api/zalo/user-status?userId=${encodeURIComponent(conv.threadId)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success && data.lastActiveTs > 0) {
+              return { threadId: conv.threadId, lastActiveTs: data.lastActiveTs }
+            }
+            return null
+          })
+          .catch((err) => {
+            console.error(`Failed to fetch status for ${conv.threadId}:`, err)
+            return null
+          })
+      )
+
+      const results = await Promise.all(promises)
+      const statusMap: Record<string, number> = {}
+      
+      results.forEach((result) => {
+        if (result && result.lastActiveTs > 0) {
+          statusMap[result.threadId] = result.lastActiveTs
+        }
+      })
+
+      if (Object.keys(statusMap).length > 0) {
+        setUserLastActiveMap((prev) => ({ ...prev, ...statusMap }))
+        console.log(`✅ Fetched online status for ${Object.keys(statusMap).length} users`)
+      }
+    }
+
+    // Initial fetch
+    fetchAllUserStatuses()
+
+    // Refresh every 30 seconds (adjust as needed)
+    const interval = setInterval(fetchAllUserStatuses, 30000)
+    return () => clearInterval(interval)
+  }, [isLoggedIn, conversations])
+
   const getUserOnlineStatus = (threadId: string) => {
     const lastActiveTs = userLastActiveMap[threadId]
     if (lastActiveTs && lastActiveTs > 0) {
