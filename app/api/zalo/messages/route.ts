@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     let fileInfo: any = null
     let explicitFileName: string = '' // NEW: Explicit filename from form
     let giphyId: string = '' // NEW: Giphy ID for caching
+    let quote: any = null // NEW: Quote/reply data
 
     const contentType = request.headers.get('content-type') || ''
     
@@ -30,6 +31,11 @@ export async function POST(request: Request) {
       threadType = Number(formData.get('threadType') || 0)
       explicitFileName = (formData.get('fileName') as string) || '' // NEW
       giphyId = (formData.get('giphyId') as string) || '' // NEW: Get Giphy ID from form
+      
+      const quoteRaw = formData.get('quote') as string
+      if (quoteRaw) {
+        try { quote = JSON.parse(quoteRaw) } catch (e) {}
+      }
       
       const stickerRaw = formData.get('sticker') as string
       if (stickerRaw) {
@@ -56,6 +62,7 @@ export async function POST(request: Request) {
       message = body.message || ''
       threadType = Number(body.threadType || 0)
       sticker = body.sticker || null
+      quote = body.quote || null
     }
 
     if (!threadId) {
@@ -187,6 +194,7 @@ export async function POST(request: Request) {
       threadId: String(threadId),
       replied: false,
       isSelf: true,
+      quote: quote || undefined, // Add quote data if present
     }
 
     broadcastMessage(sentMsg)

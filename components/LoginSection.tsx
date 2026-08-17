@@ -14,6 +14,7 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
   const scannedUser = qrState?.scannedUser
 
   // Auto-start QR generation when component mounts if status is idle
+  // ONLY if not already logged in (check from parent component)
   useEffect(() => {
     if (status === 'idle' && !isLoading) {
       console.log('🚀 [LoginSection] Auto-starting QR generation...')

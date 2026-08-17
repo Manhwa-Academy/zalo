@@ -12,6 +12,9 @@ import pool from './postgres';
 const zaloInstances = new Map<string, any>();
 const zaloUserInfos = new Map<string, any>();
 
+// Lock để tránh load session đồng thời (gây "Another connection is opened")
+const sessionLoadingLocks = new Map<string, Promise<any | null>>();
+
 /**
  * Lấy userId của user hiện tại
  * Nếu đã có user với Zalo account này → dùng lại user cũ
@@ -19,7 +22,7 @@ const zaloUserInfos = new Map<string, any>();
  */
 export async function getCurrentUserId(): Promise<string> {
   const sessionId = getSessionId();
-  console.log(`🔍 [MultiUser] Getting user for session: ${sessionId}`);
+  // console.log(`🔍 [MultiUser] Getting user for session: ${sessionId}`);
   
   // Bước 1: Kiểm tra xem session này đã có user chưa
   const existingUserResult = await pool?.query(
@@ -29,7 +32,7 @@ export async function getCurrentUserId(): Promise<string> {
   
   if (existingUserResult && existingUserResult.rows.length > 0) {
     const userId = existingUserResult.rows[0].id;
-    console.log(`✅ [MultiUser] User ID: ${userId} (from existing session)`);
+    // console.log(`✅ [MultiUser] User ID: ${userId} (from existing session)`);
     
     // Update last_active
     await pool?.query(
@@ -44,7 +47,7 @@ export async function getCurrentUserId(): Promise<string> {
   // (Login lần đầu hoặc logout rồi login lại)
   const user = await UserManager.getOrCreateUser(sessionId);
   
-  console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
+  // console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
   return user.id;
 }
 
@@ -56,17 +59,15 @@ export async function getCurrentZaloApi(): Promise<any | null> {
   const userId = await getCurrentUserId();
   let api = zaloInstances.get(userId);
   
-  console.log(`🔍 [MultiUser] Getting zaloApi for user [${userId}]: ${api ? 'FOUND IN MEMORY' : 'NOT IN MEMORY'}`);
-  console.log(`🔍 [MultiUser] Current map size: ${zaloInstances.size}, Keys:`, Array.from(zaloInstances.keys()));
-  
-  // Nếu không có trong memory → Load từ DB
+  // Nếu không có trong memory → Load từ DB (với lock để tránh load đồng thời)
   if (!api) {
-    console.log(`📦 [MultiUser] zaloApi not in memory, loading from DB...`);
-    api = await loadCurrentZaloSession();
-    if (api) {
-      console.log(`✅ [MultiUser] Loaded zaloApi from DB for user [${userId}]`);
+    // Nếu đang có request khác đang load → chờ nó xong
+    const existingLock = sessionLoadingLocks.get(userId);
+    if (existingLock) {
+      // console.log(`⏳ [MultiUser] Waiting for existing session load for user [${userId}]...`);
+      api = await existingLock;
     } else {
-      console.log(`❌ [MultiUser] No session found in DB for user [${userId}]`);
+      api = await loadCurrentZaloSession();
     }
   }
   
@@ -78,7 +79,7 @@ export async function getCurrentZaloApi(): Promise<any | null> {
  */
 export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
   const userId = await getCurrentUserId();
-  console.log(`💾 [MultiUser] Saving zaloApi for user: ${userId}`);
+  // console.log(`💾 [MultiUser] Saving zaloApi for user: ${userId}`);
   zaloInstances.set(userId, zaloApi);
   
   // Lưu session vào DB
@@ -96,7 +97,7 @@ export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
         language: ctx.language || 'vi',
       };
       await UserManager.saveZaloSession(userId, credentials);
-      console.log(`✅ [MultiUser] Saved session to DB for user: ${userId}`);
+      // console.log(`✅ [MultiUser] Saved session to DB for user: ${userId}`);
     }
   } catch (error) {
     console.error('Failed to save session to DB:', error);
@@ -108,17 +109,59 @@ export async function setCurrentZaloApi(zaloApi: any): Promise<void> {
  */
 export async function clearCurrentZaloApi(): Promise<void> {
   const userId = await getCurrentUserId();
+  
+  // Stop listener first
+  const api = zaloInstances.get(userId);
+  if (api?.listener) {
+    try {
+      api.listener.stop();
+    } catch (e) {}
+  }
+  
+  // Clear memory instances
   zaloInstances.delete(userId);
   zaloUserInfos.delete(userId);
+  
+  // Delete session from database (including appState)
   await UserManager.deleteZaloSession(userId);
+  
+  console.log(`✅ Cleared Zalo API and DB session for user: ${userId}`);
 }
 
 /**
  * Lấy user info của user hiện tại
+ * Nếu chưa có trong memory → Load từ DB cùng với session
  */
 export async function getCurrentZaloUserInfo(): Promise<any | null> {
   const userId = await getCurrentUserId();
-  return zaloUserInfos.get(userId) || null;
+  let userInfo = zaloUserInfos.get(userId);
+  
+  console.log(`🔍 [getCurrentZaloUserInfo] userId: ${userId}, in memory: ${!!userInfo}`)
+  
+  // Nếu không có trong memory → Load từ DB
+  if (!userInfo) {
+    console.log(`� [getCurrentZaloUserInfo] Loading from DB...`)
+    const saved = await UserManager.getZaloSession(userId);
+    console.log(`� [getCurrentZaloUserInfo] DB result:`, {
+      hasSession: !!saved,
+      hasSessionData: !!saved?.sessionData,
+      hasUserInfo: !!saved?.userInfo,
+      userInfoSample: saved?.userInfo ? JSON.stringify(saved.userInfo).substring(0, 100) : null
+    })
+    
+    if (saved && saved.userInfo) {
+      userInfo = saved.userInfo;
+      zaloUserInfos.set(userId, userInfo);
+      console.log(`✅ [getCurrentZaloUserInfo] Loaded and cached userInfo:`, {
+        displayName: userInfo.displayName,
+        userId: userInfo.userId
+      })
+    } else {
+      console.log(`⚠️ [getCurrentZaloUserInfo] No userInfo in DB`)
+    }
+  }
+  
+  return userInfo || null;
 }
 
 /**
@@ -128,7 +171,7 @@ export async function getCurrentZaloUserInfo(): Promise<any | null> {
 export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
   const userId = await getCurrentUserId();
   
-  console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}`, userInfo);
+  // console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}`, userInfo);
   
   // Lưu vào memory
   zaloUserInfos.set(userId, userInfo);
@@ -152,7 +195,7 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
         
         // UPSERT: Nếu user_id đã có zalo_session → Update, nếu chưa → Insert
         await UserManager.saveZaloSession(userId, credentials, userInfo);
-        console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
+        // console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
       }
     }
   } catch (error) {
@@ -166,35 +209,61 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
  */
 export async function loadCurrentZaloSession(): Promise<any | null> {
   const userId = await getCurrentUserId();
-  console.log(`📦 [MultiUser] Loading session for user: [${userId}]`);
-  const saved = await UserManager.getZaloSession(userId);
   
-  if (!saved || !saved.sessionData) {
-    console.log(`⚠️ [MultiUser] No saved session found for user: [${userId}]`);
-    return null;
+  // Nếu đã có trong memory (race condition check), trả về luôn
+  const existing = zaloInstances.get(userId);
+  if (existing) return existing;
+  
+  // Nếu đang có lock → chờ nó xong (tránh tạo nhiều connection)
+  const existingLock = sessionLoadingLocks.get(userId);
+  if (existingLock) {
+    console.log(`⏳ [MultiUser] Session load already in progress for user [${userId}], waiting...`);
+    return await existingLock;
   }
   
-  try {
-    const { Zalo } = await import('zca-js');
-    const { imageMetadataGetter } = await import('./image-metadata-getter');
+  // Tạo lock Promise
+  const loadPromise = (async () => {
+    const saved = await UserManager.getZaloSession(userId);
     
-    const zalo = new Zalo({ selfListen: true, imageMetadataGetter });
-    const zaloApi = await zalo.login(saved.sessionData);
-    
-    console.log(`💾 [MultiUser] Storing zaloApi in map for user: [${userId}]`);
-    zaloInstances.set(userId, zaloApi);
-    console.log(`✅ [MultiUser] Map size after set: ${zaloInstances.size}`);
-    
-    if (saved.userInfo) {
-      zaloUserInfos.set(userId, saved.userInfo);
+    if (!saved || !saved.sessionData) {
+      return null;
     }
     
-    console.log(`✅ Loaded Zalo session from DB for user: ${userId}`);
-    return zaloApi;
-  } catch (error) {
-    console.error('Failed to load Zalo session:', error);
-    await UserManager.deleteZaloSession(userId);
-    return null;
+    // Double-check memory sau khi query DB (có thể request khác đã set)
+    const doubleCheck = zaloInstances.get(userId);
+    if (doubleCheck) return doubleCheck;
+    
+    try {
+      const { Zalo } = await import('zca-js');
+      const { imageMetadataGetter } = await import('./image-metadata-getter');
+      
+      const zalo = new Zalo({ selfListen: true, imageMetadataGetter });
+      const zaloApi = await zalo.login(saved.sessionData);
+      
+      zaloInstances.set(userId, zaloApi);
+      
+      if (saved.userInfo) {
+        zaloUserInfos.set(userId, saved.userInfo);
+      }
+      
+      console.log(`✅ Loaded Zalo session from DB for user: ${userId}`);
+      return zaloApi;
+    } catch (error) {
+      console.error('Failed to load Zalo session:', error);
+      await UserManager.deleteZaloSession(userId);
+      return null;
+    }
+  })();
+  
+  // Lưu lock
+  sessionLoadingLocks.set(userId, loadPromise);
+  
+  try {
+    const result = await loadPromise;
+    return result;
+  } finally {
+    // Xóa lock khi xong
+    sessionLoadingLocks.delete(userId);
   }
 }
 

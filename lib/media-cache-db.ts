@@ -22,7 +22,6 @@ export async function saveMediaToCache(
   giphyId?: string
 ): Promise<boolean> {
   if (!pool) {
-    console.warn('⚠️ [MediaCache] Database not available, skipping save')
     return false
   }
   
@@ -41,7 +40,6 @@ export async function saveMediaToCache(
     const values = [userId, fileName, originalUrl, mediaType, giphyId || null]
     const result = await pool.query(query, values)
     
-    console.log(`💾 [MediaCache] Saved to DB: ${fileName} -> ${originalUrl.slice(0, 50)}...`)
     return !!result.rows[0]
   } catch (error: any) {
     console.error('❌ [MediaCache] Failed to save to DB:', error.message)
@@ -57,7 +55,6 @@ export async function getMediaFromCache(
   userId?: string | null
 ): Promise<string | null> {
   if (!pool) {
-    console.warn('⚠️ [MediaCache] Database not available')
     return null
   }
   
@@ -79,11 +76,9 @@ export async function getMediaFromCache(
     
     if (result.rows.length > 0) {
       const url = result.rows[0].original_url
-      console.log(`✅ [MediaCache] Found in DB: ${fileName} -> ${url.slice(0, 50)}...`)
       return url
     }
     
-    console.log(`⚠️ [MediaCache] Not found in DB: ${fileName}`)
     return null
   } catch (error: any) {
     console.error('❌ [MediaCache] Failed to get from DB:', error.message)
@@ -99,7 +94,6 @@ export async function getMediaByGiphyId(
   userId?: string | null
 ): Promise<string | null> {
   if (!pool) {
-    console.warn('⚠️ [MediaCache] Database not available')
     return null
   }
   
@@ -119,7 +113,6 @@ export async function getMediaByGiphyId(
     
     if (result.rows.length > 0) {
       const url = result.rows[0].original_url
-      console.log(`✅ [MediaCache] Found by Giphy ID: ${giphyId} -> ${url.slice(0, 50)}...`)
       return url
     }
     
@@ -135,7 +128,6 @@ export async function getMediaByGiphyId(
  */
 export async function getAllMediaCache(userId?: string | null): Promise<Record<string, string>> {
   if (!pool) {
-    console.warn('⚠️ [MediaCache] Database not available')
     return {}
   }
   
@@ -164,7 +156,6 @@ export async function getAllMediaCache(userId?: string | null): Promise<Record<s
       }
     })
     
-    console.log(`📦 [MediaCache] Loaded ${result.rows.length} entries from DB`)
     return cache
   } catch (error: any) {
     console.error('❌ [MediaCache] Failed to get all cache:', error.message)
@@ -177,7 +168,6 @@ export async function getAllMediaCache(userId?: string | null): Promise<Record<s
  */
 export async function cleanupOldMediaCache(daysOld: number = 90): Promise<number> {
   if (!pool) {
-    console.warn('⚠️ [MediaCache] Database not available')
     return 0
   }
   
@@ -186,7 +176,6 @@ export async function cleanupOldMediaCache(daysOld: number = 90): Promise<number
     const result = await pool.query(query)
     
     const deletedCount = result.rowCount || 0
-    console.log(`🗑️ [MediaCache] Cleaned up ${deletedCount} old entries (>${daysOld} days)`)
     return deletedCount
   } catch (error: any) {
     console.error('❌ [MediaCache] Failed to cleanup:', error.message)

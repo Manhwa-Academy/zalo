@@ -1,28 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import pool from '@/lib/postgres'
-import { AuthManager } from '@/lib/auth-manager'
+import { getCurrentUserId } from '@/lib/multi-user-zalo'
 
 /**
  * GET - Get user settings
  */
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const authToken = cookieStore.get('auth_token')?.value
-
-    if (!authToken) {
+    // Use Zalo multi-user system instead of auth system
+    const userId = await getCurrentUserId()
+    
+    if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
-
-    // Validate session and get user
-    const validation = await AuthManager.validateSession(authToken)
-
-    if (!validation.valid || !validation.user) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
-    }
-
-    const userId = validation.user.id
 
     // Get user settings
     let settingsResult = await pool?.query(
@@ -85,22 +76,20 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const authToken = cookieStore.get('auth_token')?.value
-
-    if (!authToken) {
+    // Use Zalo multi-user system instead of auth system
+    const userId = await getCurrentUserId()
+    
+    if (!userId) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
-
-    // Validate session and get user
-    const validation = await AuthManager.validateSession(authToken)
-
-    if (!validation.valid || !validation.user) {
-      return NextResponse.json({ error: 'Invalid session' }, { status: 401 })
+    
+    // Parse body with error handling
+    let body
+    try {
+      body = await request.json()
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
-
-    const userId = validation.user.id
-    const body = await request.json()
 
     // Update settings
     await pool?.query(
@@ -143,8 +132,6 @@ export async function POST(request: NextRequest) {
         userId
       ]
     )
-
-    console.log('✅ [Settings API] Settings updated for user:', userId)
 
     return NextResponse.json({
       success: true,

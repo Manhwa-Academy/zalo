@@ -44,6 +44,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
     autoDeleteDays: 'never'
   })
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -52,6 +53,9 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
     
     // Load settings from database
     loadSettingsFromDatabase()
+    
+    // Load debug info
+    loadDebugInfo()
   }, [])
 
   const loadSettingsFromDatabase = async () => {
@@ -68,6 +72,21 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
       console.error('❌ [Header] Failed to load settings:', error)
     } finally {
       setIsLoadingSettings(false)
+    }
+  }
+
+  const loadDebugInfo = async () => {
+    try {
+      const response = await fetch('/api/debug/user-info')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setDebugInfo(data.debug)
+          console.log('🐛 [Debug] User info:', data.debug)
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Debug] Failed to load debug info:', error)
     }
   }
 
@@ -529,6 +548,64 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                     <span className="text-xs text-gray-400">Phiên bản</span>
                     <span className="text-xs font-mono text-white">v1.0.0</span>
                   </div>
+                  
+                  {/* Debug Info */}
+                  {debugInfo && (
+                    <>
+                      <div className="flex justify-between items-center pt-2 border-t border-white/10">
+                        <span className="text-xs text-gray-400">Database User ID</span>
+                        <span className="text-xs font-mono text-white truncate max-w-[200px]" title={debugInfo.userId}>
+                          {debugInfo.userId}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-400">Session ID</span>
+                        <span className="text-xs font-mono text-gray-400">{debugInfo.sessionId}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-400">User Settings</span>
+                        <span className={`text-xs font-medium ${debugInfo.hasUserSettings ? 'text-success' : 'text-error'}`}>
+                          {debugInfo.hasUserSettings ? '✅ Có' : '❌ Không'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-gray-400">Bot Settings</span>
+                        <span className={`text-xs font-medium ${debugInfo.hasBotSettings ? 'text-success' : 'text-error'}`}>
+                          {debugInfo.hasBotSettings ? '✅ Có' : '❌ Không'}
+                        </span>
+                      </div>
+                      
+                      {(!debugInfo.hasUserSettings || !debugInfo.hasBotSettings) && (
+                        <div className="pt-2 border-t border-warning/30 bg-warning/5 -mx-4 -mb-4 mt-2 px-4 py-3 rounded-b-xl">
+                          <p className="text-xs text-warning flex items-start gap-2 mb-2">
+                            <span className="flex-shrink-0">⚠️</span>
+                            <span>
+                              <strong>Thiếu cấu hình:</strong> Bạn thiếu settings trong database. Click nút bên dưới để tự động tạo.
+                            </span>
+                          </p>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const response = await fetch('/api/debug/fix-settings', { method: 'POST' })
+                                const data = await response.json()
+                                if (data.success) {
+                                  alert('✅ Settings đã được tạo! Vui lòng reload trang.')
+                                  window.location.reload()
+                                } else {
+                                  alert('❌ Lỗi: ' + data.error)
+                                }
+                              } catch (error) {
+                                alert('❌ Lỗi khi tạo settings')
+                              }
+                            }}
+                            className="w-full bg-warning hover:bg-warning/80 text-black font-medium px-3 py-2 rounded-lg text-xs transition-colors"
+                          >
+                            🔧 Tự động tạo Settings
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="flex justify-between items-center pt-2 border-t border-white/10">
                     <span className="text-xs text-gray-400">Người dùng</span>
                     <span className="text-xs text-white">{userInfo?.displayName || 'N/A'}</span>

@@ -109,30 +109,15 @@ export async function POST(request: Request) {
   try {
     loginInProgressMap.set(userId, true)
 
-    // Try to load existing session from database
-    let zaloApi = await getCurrentZaloApi()
-    if (!zaloApi && !force) {
-      zaloApi = await loadCurrentZaloSession()
-    }
-
-    if (zaloApi && !force) {
-      const userInfo = await populateUserInfo(zaloApi)
-      loginInProgressMap.set(userId, false)
-      updateQrState({ status: 'success' })
-      return NextResponse.json({
-        success: true,
-        userInfo,
-        message: 'Đã tự động đăng nhập từ phiên làm việc trước!'
-      })
-    }
-
-    console.log('📱 Starting login process & generating web QR code...')
+    // NEVER auto-load session - always require QR scan or import
+    // This ensures security and fresh login every time
+    console.log('📱 Starting fresh login process & generating web QR code...')
     resetQrState()
     updateQrState({ status: 'generating' })
 
     const zalo = new Zalo({ selfListen: true, imageMetadataGetter })
 
-    zaloApi = await zalo.loginQR(
+    const zaloApi = await zalo.loginQR(
       {
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       },
@@ -190,6 +175,9 @@ export async function POST(request: Request) {
 
     await setCurrentZaloApi(zaloApi)
     
+    // IMPORTANT: Also save userInfo separately to ensure it's in DB
+    await setCurrentZaloUserInfo(userInfo)
+    
     console.log('✅ Web QR Login successful!')
     updateQrState({ status: 'success' })
     loginInProgressMap.set(userId, false)
@@ -201,6 +189,26 @@ export async function POST(request: Request) {
     })
   } catch (error: any) {
     loginInProgressMap.set(userId, false)
+    
+    // Check if user is actually already logged in (e.g., QR expired AFTER successful scan)
+    // This happens when loginQR() rejects due to expiry but the session was already saved
+    try {
+      const existingUserInfo = await getCurrentZaloUserInfo()
+      const existingApi = await getCurrentZaloApi()
+      
+      if (existingApi && existingUserInfo) {
+        console.log('⚠️ Login error caught, but user is already logged in. Suppressing error.')
+        updateQrState({ status: 'success' })
+        return NextResponse.json({ 
+          success: true,
+          userInfo: existingUserInfo,
+          message: 'Đã đăng nhập thành công (phiên hiện tại)!'
+        })
+      }
+    } catch (checkErr) {
+      console.warn('⚠️ Could not check existing session:', checkErr)
+    }
+    
     console.error('Login error:', error)
     updateQrState({
       status: 'error',
@@ -215,43 +223,36 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  // Check if we're in QR generation flow
-  const qrState = getQrState()
-  const isQRFlow = qrState && ['generating', 'qr_ready', 'scanned'].includes(qrState.status)
-  
-  // If in QR flow, don't check for existing session
-  // Force user to complete QR scan or import
-  if (isQRFlow) {
-    console.log('📱 [Login GET] In QR flow, not checking existing session')
+  try {
+    // Force load session from DB to ensure we have latest state
+    const currentApi = await getCurrentZaloApi()
+    const currentUserInfo = await getCurrentZaloUserInfo()
+    const qrState = getQrState()
+    
+    // User is logged in if we have both API and user info
+    const isLoggedIn = !!(currentApi && currentUserInfo)
+    
+    console.log(`🔍 [GET /api/zalo/login] Check result:`, {
+      hasApi: !!currentApi,
+      hasUserInfo: !!currentUserInfo,
+      isLoggedIn,
+      userInfoSample: currentUserInfo ? { 
+        displayName: currentUserInfo.displayName,
+        userId: currentUserInfo.userId 
+      } : null
+    })
+    
     return NextResponse.json({
-      loggedIn: false,
+      loggedIn: isLoggedIn,
+      userInfo: isLoggedIn ? currentUserInfo : null,
       qrState: qrState
     })
-  }
-  
-  // Otherwise, check for existing session
-  let zaloApi = await getCurrentZaloApi()
-  if (!zaloApi) {
-    zaloApi = await loadCurrentZaloSession()
-  }
-  
-  if (!zaloApi) {
+  } catch (error: any) {
+    console.error('❌ [GET /api/zalo/login] Error:', error)
     return NextResponse.json({
       loggedIn: false,
-      qrState: qrState
+      userInfo: null,
+      qrState: getQrState()
     })
   }
-
-  let userInfo = await getCurrentZaloUserInfo()
-  if (!userInfo || userInfo.displayName === 'User') {
-    try {
-      userInfo = await populateUserInfo(zaloApi)
-    } catch (e) {}
-  }
-
-  return NextResponse.json({ 
-    loggedIn: true,
-    userInfo,
-    qrState: getQrState()
-  })
 }

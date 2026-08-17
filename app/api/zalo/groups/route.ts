@@ -22,7 +22,6 @@ export async function GET() {
     if (typeof zaloApi.getAllGroups === 'function') {
       try {
         const res = await zaloApi.getAllGroups()
-        console.log('📦 Raw getAllGroups response:', JSON.stringify(res, null, 2))
 
         const rawData = res?.data || res
         const gridVerMap = rawData?.gridVerMap || res?.gridVerMap
@@ -39,13 +38,10 @@ export async function GET() {
           })
         }
 
-        console.log(`🔍 Found ${groupIds.length} group IDs:`, groupIds)
-
         // 3. Fetch detailed group info for these IDs via getGroupInfo()
         if (groupIds.length > 0 && typeof zaloApi.getGroupInfo === 'function') {
           try {
             const infoRes = await zaloApi.getGroupInfo(groupIds)
-            console.log('📦 Raw getGroupInfo response:', JSON.stringify(infoRes, null, 2))
 
             const infoData = infoRes?.data || infoRes
             const gridMap = infoData?.gridInfoMap || infoData
@@ -62,7 +58,6 @@ export async function GET() {
               })
             }
           } catch (infoErr) {
-            console.error('Failed to getGroupInfo:', infoErr)
             groupIds.forEach((id) => {
               if (!groupMap.has(id)) {
                 groupMap.set(id, { id, name: `Nhóm ${id}`, totalMember: 0 })
@@ -77,12 +72,11 @@ export async function GET() {
           })
         }
       } catch (err: any) {
-        console.error('zaloApi.getAllGroups error:', err)
+        // Silent error - getAllGroups failed
       }
     }
 
     const groups = Array.from(groupMap.values())
-    console.log(`✅ Formatted ${groups.length} groups for frontend`)
 
     return NextResponse.json({ success: true, groups })
   } catch (error: any) {

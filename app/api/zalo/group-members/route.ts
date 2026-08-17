@@ -73,7 +73,6 @@ export async function GET(request: Request) {
     }
 
     const memberIds = Array.from(memberIdsSet)
-    console.log(`👥 Found ${memberIds.length} raw member IDs for group ${groupId}:`, memberIds)
 
     // 2. Fetch member names & avatars using getGroupMembersInfo
     if (memberIds.length > 0 && typeof zaloApi.getGroupMembersInfo === 'function') {
@@ -141,8 +140,6 @@ export async function GET(request: Request) {
         avatar: details?.avatar || '',
       }
     })
-
-    console.log(`✅ Loaded ${members.length} members for group ${groupId}`)
 
     return NextResponse.json({ success: true, members })
   } catch (error: any) {

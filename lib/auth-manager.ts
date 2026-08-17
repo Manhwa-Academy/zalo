@@ -54,8 +54,6 @@ export class AuthManager {
         [username, passwordHash, displayName, email]
       );
 
-      console.log(`✅ [AuthManager] Created user: ${username}`);
-
       return {
         id: result.rows[0].id,
         username: result.rows[0].username,
@@ -108,8 +106,6 @@ export class AuthManager {
         'UPDATE auth_users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
         [user.id]
       );
-
-      console.log(`✅ [AuthManager] Authenticated user: ${username}`);
 
       return {
         id: user.id,
@@ -192,8 +188,6 @@ export class AuthManager {
         ]
       );
 
-      console.log(`✅ [AuthManager] Created session for user: ${userId}`);
-
       return sessionToken;
     } catch (error) {
       console.error('❌ [AuthManager] createSession failed:', error);
@@ -212,18 +206,13 @@ export class AuthManager {
     }
 
     try {
-      console.log(`🔍 [AuthManager] Validating session token: ${sessionToken.substring(0, 30)}...`);
-      
       // Query the function which returns a composite type
       const result = await pool.query(
         `SELECT * FROM validate_session($1)`,
         [sessionToken]
       );
 
-      console.log(`🔍 [AuthManager] DB validation result:`, result.rows[0]);
-
       if (result.rows.length === 0) {
-        console.log(`❌ [AuthManager] No validation result from DB`);
         return { valid: false };
       }
 
@@ -231,11 +220,8 @@ export class AuthManager {
 
       // Check the 'valid' column
       if (!validation.valid) {
-        console.log(`❌ [AuthManager] Session invalid`);
         return { valid: false };
       }
-
-      console.log(`✅ [AuthManager] Session valid for user: ${validation.username}`);
 
       return {
         valid: true,
@@ -267,10 +253,6 @@ export class AuthManager {
 
       const success = result.rows[0]?.success || false;
 
-      if (success) {
-        console.log(`✅ [AuthManager] Logged out session: ${sessionToken}`);
-      }
-
       return success;
     } catch (error) {
       console.error('❌ [AuthManager] logoutSession failed:', error);
@@ -291,8 +273,6 @@ export class AuthManager {
       );
 
       const count = result.rows[0]?.count || 0;
-
-      console.log(`✅ [AuthManager] Logged out ${count} sessions for user: ${userId}`);
 
       return count;
     } catch (error) {
@@ -365,7 +345,6 @@ export class AuthManager {
 
     try {
       await pool.query('SELECT cleanup_expired_sessions()');
-      console.log('✅ [AuthManager] Cleaned up expired sessions');
     } catch (error) {
       console.error('❌ [AuthManager] cleanupExpiredSessions failed:', error);
     }
@@ -421,8 +400,6 @@ export class AuthManager {
         'UPDATE auth_users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
         [passwordHash, userId]
       );
-
-      console.log(`✅ [AuthManager] Updated password for user: ${userId}`);
 
       return true;
     } catch (error) {

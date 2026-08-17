@@ -21,7 +21,7 @@ import ZaloImportModal from '@/components/ZaloImportModal'
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
-  const [isCheckingZaloLogin, setIsCheckingZaloLogin] = useState(false)
+  const [isCheckingZaloLogin, setIsCheckingZaloLogin] = useState(true) // Start as true to prevent premature render
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
@@ -69,6 +69,7 @@ export default function Home() {
   const notifiedMsgIdsRef = useRef<Set<string>>(new Set())
   const isInitialMountRef = useRef<boolean>(true)
   const loginPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isLoggedInRef = useRef<boolean>(false) // Track login state for interval
 
   // Suppress notifications during initial 4 seconds after page load / F5
   useEffect(() => {
@@ -76,17 +77,55 @@ export default function Home() {
       isInitialMountRef.current = false
     }, 4000)
     
-    // Cleanup on unmount
-    return () => {
+    // Cleanup on unmount or page unload
+    const cleanup = () => {
       clearTimeout(timer)
       
       // Clear login polling interval
       if (loginPollIntervalRef.current) {
+        console.log('🧹 Cleanup: clearing poll interval')
         clearInterval(loginPollIntervalRef.current)
         loginPollIntervalRef.current = null
       }
     }
+    
+    // Handle page navigation/close
+    window.addEventListener('beforeunload', cleanup)
+    
+    return () => {
+      cleanup()
+      window.removeEventListener('beforeunload', cleanup)
+    }
   }, [])
+
+  // Session validation polling - Check if still authenticated every 30 seconds
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/auth/check')
+        const data = await response.json()
+        
+        if (!data.authenticated) {
+          console.log('🚫 [Session] Session expired or logged out, redirecting...')
+          setIsAuthenticated(false)
+          setUserInfo(null)
+          showToast('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 'error')
+        }
+      } catch (error) {
+        console.error('❌ [Session] Check failed:', error)
+      }
+    }
+
+    // Check immediately on mount
+    checkSession()
+
+    // Then check every 30 seconds
+    const interval = setInterval(checkSession, 30000)
+
+    return () => clearInterval(interval)
+  }, [isAuthenticated])
 
   // Check authentication status first
   useEffect(() => {
@@ -109,9 +148,30 @@ export default function Home() {
     checkAuth()
   }, [])
 
+  // Clear polling interval when user logs in successfully
+  useEffect(() => {
+    const wasLoggedIn = isLoggedInRef.current
+    isLoggedInRef.current = isLoggedIn // Update ref
+    
+    if (isLoggedIn && !wasLoggedIn) {
+      console.log('✅ [Effect] User state changed to LOGGED IN, forcing poll cleanup')
+      if (loginPollIntervalRef.current) {
+        clearInterval(loginPollIntervalRef.current)
+        loginPollIntervalRef.current = null
+        console.log('🛑 [Effect] Poll interval CLEARED')
+      } else {
+        console.log('ℹ️ [Effect] No poll interval to clear')
+      }
+    }
+  }, [isLoggedIn])
+
   // Check login status and load bot settings on page mount (F5)
   useEffect(() => {
-    if (!isAuthenticated) return // Don't load Zalo session if not authenticated
+    if (!isAuthenticated) {
+      // Not authenticated, don't check Zalo login
+      setIsCheckingZaloLogin(false)
+      return
+    }
 
     const initPage = async () => {
       setIsCheckingZaloLogin(true)
@@ -176,26 +236,36 @@ export default function Home() {
           }
         } catch (e) {}
 
-        // 2. Fetch login status
+        // 2. Check Zalo login status from backend
         const loginRes = await fetch('/api/zalo/login')
         const loginData = await loginRes.json()
         
-        if (loginData.qrState) {
-          setQrState(loginData.qrState)
-        }
-
-        // Check if already logged in from saved session
+        console.log('🔍 [Init] Login status from backend:', {
+          loggedIn: loginData.loggedIn,
+          hasUserInfo: !!loginData.userInfo,
+          qrStatus: loginData.qrState?.status
+        })
+        
+        // If already logged in (has session from DB), restore it
         if (loginData.loggedIn && loginData.userInfo) {
-          console.log('✅ Already logged in with saved session:', loginData.userInfo.displayName)
+          console.log('✅ [Init] Found existing Zalo session, auto-login')
           setIsLoggedIn(true)
+          isLoggedInRef.current = true // Update ref
           setUserInfo(loginData.userInfo)
+          setQrState(null) // Clear QR state
           
-          // Start listener for logged in user
+          // Start listener automatically
           setTimeout(() => startListener(), 500)
         } else {
-          // Not logged in - will show LoginSection which will auto-start QR
-          console.log('ℹ️ Not logged in, showing login page...')
+          // Not logged in, ready for QR scan
+          console.log('ℹ️ [Init] No session found, ready for QR login')
           setIsLoggedIn(false)
+          isLoggedInRef.current = false // Update ref
+          setUserInfo(null)
+          
+          if (loginData.qrState) {
+            setQrState(loginData.qrState)
+          }
         }
       } catch (error) {
         console.error('Failed to initialize page state:', error)
@@ -225,54 +295,135 @@ export default function Home() {
     }
   }, [isAuthenticated, isCheckingZaloLogin])
 
-  // Handle Login via Web QR API with Polling
+  // Handle Login via Web QR API
   const handleLogin = async (force: boolean = false) => {
+    // Prevent duplicate calls if already logged in or still checking
+    if (isLoggedIn) {
+      console.log('⚠️ Already logged in, skipping login')
+      return
+    }
+    
+    if (isCheckingZaloLogin) {
+      console.log('⚠️ Still checking Zalo session, skipping login')
+      return
+    }
+    
     setIsLoading(true)
     
     // Clear any existing poll interval
     if (loginPollIntervalRef.current) {
+      console.log('🛑 Clearing existing poll interval')
       clearInterval(loginPollIntervalRef.current)
       loginPollIntervalRef.current = null
     }
     
     try {
-      // Start QR generation on backend (fire and forget)
-      fetch('/api/zalo/login', {
+      // Start QR generation and wait for response
+      const loginResponse = await fetch('/api/zalo/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force }),
-      }).catch(err => console.error('Login POST error:', err))
+      })
+      
+      const loginData = await loginResponse.json()
+      
+      // Check if logged in successfully from POST response
+      // Note: Backend may return success even on non-200 status if session exists
+      if (loginData.success && loginData.userInfo) {
+        console.log('✅ [Login] POST returned success, updating state immediately')
+        setIsLoggedIn(true)
+        isLoggedInRef.current = true // Update ref immediately
+        setUserInfo(loginData.userInfo)
+        setIsLoading(false)
+        setQrState(null) // Clear QR state
+        
+        // Clear any polling that might still be running
+        if (loginPollIntervalRef.current) {
+          console.log('🛑 [Login] Clearing poll interval after POST success')
+          clearInterval(loginPollIntervalRef.current)
+          loginPollIntervalRef.current = null
+        }
+        
+        // Start listener after successful login
+        setTimeout(() => startListener(), 500)
+        return // IMPORTANT: Return to stop further execution
+      }
 
-      // Poll GET endpoint every 1 second to check status
+      // If user is already logged in (e.g. from import or another tab), skip error handling
+      if (isLoggedInRef.current) {
+        console.log('⚠️ [Login] POST failed but user is already logged in, ignoring')
+        setIsLoading(false)
+        return
+      }
+
+      // If POST failed, poll GET endpoint every 1 second to check QR state
+      console.log('📡 [Login] POST did not return success, starting QR status polling...')
+      let pollCount = 0
+      const maxPolls = 180 // 3 minutes max
+      
       loginPollIntervalRef.current = setInterval(async () => {
+        pollCount++
+        
+        // Stop polling if user already logged in (use ref to get latest value)
+        if (isLoggedInRef.current) {
+          console.log('✅ [Poll] User logged in (ref check), stopping poll')
+          if (loginPollIntervalRef.current) {
+            clearInterval(loginPollIntervalRef.current)
+            loginPollIntervalRef.current = null
+          }
+          return
+        }
+        
+        // Stop after max polls
+        if (pollCount >= maxPolls) {
+          console.log('⏰ [Poll] Timeout reached, stopping poll')
+          if (loginPollIntervalRef.current) {
+            clearInterval(loginPollIntervalRef.current)
+            loginPollIntervalRef.current = null
+          }
+          setIsLoading(false)
+          return
+        }
+        
         try {
           const res = await fetch('/api/zalo/login')
           const data = await res.json()
+          
+          console.log(`📊 [Poll ${pollCount}] Response:`, {
+            loggedIn: data.loggedIn,
+            hasUserInfo: !!data.userInfo,
+            qrStatus: data.qrState?.status
+          })
+
+          // Check if login succeeded on backend
+          if (data.loggedIn && data.userInfo) {
+            console.log('✅ [Poll] Backend reports logged in, updating state')
+            setIsLoggedIn(true)
+            isLoggedInRef.current = true // Update ref
+            setUserInfo(data.userInfo)
+            setIsLoading(false)
+            setQrState(null)
+            
+            // Clear polling
+            if (loginPollIntervalRef.current) {
+              console.log('🛑 [Poll] Clearing interval after detection')
+              clearInterval(loginPollIntervalRef.current)
+              loginPollIntervalRef.current = null
+            }
+            
+            // Start listener
+            setTimeout(() => startListener(), 500)
+            return
+          }
 
           // Update QR state
           if (data.qrState) {
             setQrState(data.qrState)
           }
-
-          // Check if logged in successfully
-          if (data.loggedIn) {
-            console.log('✅ Login successful! Redirecting to app...')
-            if (loginPollIntervalRef.current) {
-              clearInterval(loginPollIntervalRef.current)
-              loginPollIntervalRef.current = null
-            }
-            setIsLoggedIn(true)
-            if (data.userInfo) setUserInfo(data.userInfo)
-            setIsLoading(false)
-            setQrState(null) // Clear QR state
-            
-            // Start listener after successful login
-            setTimeout(() => startListener(), 500)
-          }
           
           // Stop polling if error/expired/declined
           if (data.qrState && ['error', 'expired', 'declined'].includes(data.qrState.status)) {
-            console.log(`⚠️ QR ${data.qrState.status}, stopping poll`)
+            console.log(`⚠️ [Poll] QR ${data.qrState.status}, stopping poll`)
             if (loginPollIntervalRef.current) {
               clearInterval(loginPollIntervalRef.current)
               loginPollIntervalRef.current = null
@@ -280,22 +431,30 @@ export default function Home() {
             setIsLoading(false)
           }
         } catch (e) {
-          console.error('Polling error:', e)
+          console.error('[Poll] Error:', e)
         }
       }, 1000) as unknown as NodeJS.Timeout // Poll every 1 second
-
-      // Auto-clear polling after 3 minutes
-      setTimeout(() => {
+      
+    } catch (error: any) {
+      // If user is already logged in, this error is from a stale request - ignore it
+      if (isLoggedInRef.current) {
+        console.log('⚠️ [Login] Fetch error ignored - user is already logged in')
+        setIsLoading(false)
         if (loginPollIntervalRef.current) {
           clearInterval(loginPollIntervalRef.current)
           loginPollIntervalRef.current = null
         }
-        setIsLoading(false)
-      }, 180000)
+        return
+      }
       
-    } catch (error: any) {
       console.error('Login failed:', error)
       setIsLoading(false)
+      
+      // Clear polling on error
+      if (loginPollIntervalRef.current) {
+        clearInterval(loginPollIntervalRef.current)
+        loginPollIntervalRef.current = null
+      }
     }
   }
 
@@ -838,12 +997,23 @@ export default function Home() {
         </div>
         
         {!isLoggedIn ? (
-          <LoginSection 
-            isLoading={isLoading}
-            qrState={qrState}
-            onLogin={handleLogin}
-            onImportAccount={() => setShowImportModal(true)}
-          />
+          isCheckingZaloLogin ? (
+            // Show loading while checking Zalo session
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center p-8 bg-dark-200/80 rounded-2xl border border-dark-100 backdrop-blur shadow-2xl">
+                <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-gray-200 font-semibold text-base mb-2">Đang kiểm tra phiên Zalo...</p>
+                <p className="text-gray-400 text-xs">Vui lòng chờ trong giây lát</p>
+              </div>
+            </div>
+          ) : (
+            <LoginSection 
+              isLoading={isLoading}
+              qrState={qrState}
+              onLogin={handleLogin}
+              onImportAccount={() => setShowImportModal(true)}
+            />
+          )
         ) : (
           <div className="flex-1 flex flex-col min-h-0 space-y-2 animate-slideIn">
             {/* Top View Mode Switcher */}

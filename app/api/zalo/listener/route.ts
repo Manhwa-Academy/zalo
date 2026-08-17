@@ -7,7 +7,15 @@ export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   try {
-    const { action } = await request.json()
+    let action = ''
+    try {
+      const body = await request.json()
+      action = body?.action || ''
+    } catch {
+      // Empty or malformed body - treat as status check
+      action = ''
+    }
+    
     const zaloApi = await getCurrentZaloApi()
 
     if (!zaloApi) {
@@ -16,13 +24,11 @@ export async function POST(request: Request) {
     }
 
     if (action === 'start') {
-      console.log('🎧 Ensuring listener is attached to active zaloApi...')
       attachListenerToApi(zaloApi)
       return NextResponse.json({ success: true, message: 'Listener active' })
     }
 
     if (action === 'stop') {
-      console.log('🛑 Stopping message listener...')
       try {
         if (zaloApi.listener) zaloApi.listener.stop()
       } catch (e) {}
@@ -31,7 +37,6 @@ export async function POST(request: Request) {
     }
 
     if (action === 'clearLogs') {
-      console.log('🧹 Clearing all stored message logs...')
       clearStoredMessages()
       return NextResponse.json({ success: true, message: 'Message logs cleared' })
     }
@@ -59,8 +64,6 @@ export async function GET() {
       const client = { id: clientId, controller }
       sseClients.push(client)
 
-      console.log(`📡 [SSE] New client connected (ID: ${clientId}), total clients: ${sseClients.length}`)
-
       // Send initial connection message
       controller.enqueue('data: {"type":"connected"}\n\n')
 
@@ -80,7 +83,6 @@ export async function GET() {
           const index = sseClients.findIndex(c => c.id === clientId)
           if (index > -1) {
             sseClients.splice(index, 1)
-            console.log(`🔌 [SSE] Client disconnected (ID: ${clientId}), remaining clients: ${sseClients.length}`)
           }
         }
       }, 15000)
@@ -91,7 +93,6 @@ export async function GET() {
         const index = sseClients.findIndex(c => c.id === clientId)
         if (index > -1) {
           sseClients.splice(index, 1)
-          console.log(`🔌 [SSE] Client cancelled (ID: ${clientId}), remaining clients: ${sseClients.length}`)
         }
       }
     }

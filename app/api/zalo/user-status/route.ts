@@ -66,15 +66,15 @@ export async function GET(request: Request) {
         }
         profileData = uRes
         lastActiveTs = findLastActiveInObj(uRes)
-      } catch (err: any) {
-        console.error('getUserInfo error in user-status:', err.message || err)
+      } catch {
+        // Silent fail - user status is non-critical
       }
     }
 
     // NOTE: Removed getAllFriends() call here to prevent 429 rate limit errors
     // Friends list should be fetched separately via /api/zalo/friends
 
-    console.log(`📡 user-status for ${userId}: lastActiveTs=${lastActiveTs} (${lastActiveTs > 0 ? new Date(lastActiveTs).toISOString() : 'none'})`)
+    // console.log(`📡 user-status for ${userId}: lastActiveTs=${lastActiveTs} (${lastActiveTs > 0 ? new Date(lastActiveTs).toISOString() : 'none'})`)
 
     return NextResponse.json({
       success: true,

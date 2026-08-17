@@ -4,6 +4,7 @@ interface Message {
   id: string | number
   msgId?: string | number
   cliMsgId?: string | number
+  globalMsgId?: string | number
   threadId: string
   from: string
   fromName: string
@@ -18,6 +19,12 @@ interface Message {
   photoUrl?: string
   imageUrl?: string
   videoUrl?: string
+  quote?: {
+    id: string | number
+    msgId?: string | number
+    fromName: string
+    content: string
+  }
 }
 
 // Convert raw message content (possibly JSON) into short sidebar preview text
@@ -622,6 +629,49 @@ export default function ZaloChatView({
   const [filterTab, setFilterTab] = useState<'all' | 'user' | 'group'>('all')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Merge new log entries into existing conversations (don't replace the full list!)
+  useEffect(() => {
+    if (!logs || logs.length === 0) return
+
+    setConversations((prev) => {
+      const map = new Map<string, Conversation>()
+      // 1. Keep ALL existing conversations (friends, groups from API)
+      prev.forEach((c) => map.set(c.threadId, c))
+
+      // 2. Update/add only conversations that appear in logs
+      logs.forEach((log) => {
+        const threadId = String(log.threadId || '')
+        if (!threadId) return
+
+        const existing = map.get(threadId)
+        const logTime = new Date(log.timestamp).getTime()
+
+        if (!existing || logTime > (existing.lastTimestamp || 0)) {
+          const preview = getLastMessagePreview(log.content)
+          const timeStr = new Date(log.timestamp).toLocaleTimeString('vi-VN', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+
+          map.set(threadId, {
+            ...(existing || {}),
+            threadId,
+            name: existing?.name || log.fromName || threadId,
+            avatar: existing?.avatar || log.avatar,
+            type: existing?.type || log.type || 'User',
+            lastMessage: preview || 'Tin nhắn mới',
+            lastTime: timeStr,
+            lastTimestamp: logTime,
+          } as Conversation)
+        }
+      })
+
+      const list = Array.from(map.values())
+      list.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
+      return list
+    })
+  }, [logs])
+
   // Navigate to thread when notification is clicked
   useEffect(() => {
     if (navigateToThreadId) {
@@ -707,6 +757,31 @@ export default function ZaloChatView({
         .finally(() => setGiphyLoading(false))
     }, 400)
   }
+
+  // Close sticker picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        showStickerPicker &&
+        stickerPickerRef.current &&
+        !stickerPickerRef.current.contains(event.target as Node)
+      ) {
+        // Check if click is on the toggle button itself
+        const target = event.target as HTMLElement
+        const isToggleButton = target.closest('[data-sticker-toggle]')
+        
+        if (!isToggleButton) {
+          setShowStickerPicker(false)
+        }
+      }
+    }
+
+    if (showStickerPicker) {
+      // Add listener when picker is shown
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showStickerPicker])
 
   const POPULAR_EMOJIS = ['😂', '🥰', '😍', '😭', '😎', '🤣', '👍', '❤️', '🔥', '🎉', '🙏', '✨', '💡', '🚀', '💯', '🤝', '😊', '🤔', '😅', '🥳', '💩', '🤡', '👻', '💀']
 
@@ -1124,10 +1199,14 @@ export default function ZaloChatView({
   }, [historyMessages, logs, userInfo?.userId])
 
   // Fetch ground-truth presence / lastActiveTs directly from Zalo API periodically
+  const activeThreadType = React.useMemo(() => {
+    const conv = conversations.find((c) => c.threadId === activeThreadId)
+    return conv?.type || 'User'
+  }, [activeThreadId, conversations])
+
   useEffect(() => {
     if (!activeThreadId) return
-    const conv = conversations.find((c) => c.threadId === activeThreadId)
-    if (conv && conv.type === 'Group') return
+    if (activeThreadType === 'Group') return
 
     const fetchStatus = () => {
       fetch(`/api/zalo/user-status?userId=${encodeURIComponent(activeThreadId)}`)
@@ -1140,36 +1219,42 @@ export default function ZaloChatView({
             }))
           }
         })
-        .catch((err) => console.error('Failed to fetch user-status:', err))
+        .catch(() => {}) // Silent fail, don't log
     }
 
     fetchStatus()
-    const interval = setInterval(fetchStatus, 20000)
+    const interval = setInterval(fetchStatus, 30000)
     return () => clearInterval(interval)
-  }, [activeThreadId, conversations])
+  }, [activeThreadId, activeThreadType])
 
   // 🆕 Fetch online status for ALL user conversations (not just active one)
-  useEffect(() => {
-    if (!userInfo || conversations.length === 0) return
+  // Use a stable key derived from user thread IDs to avoid re-fetching on every conversation update
+  const userThreadIdsKey = React.useMemo(() => {
+    return conversations
+      .filter((c) => c.type === 'User')
+      .map((c) => c.threadId)
+      .sort()
+      .join(',')
+  }, [conversations])
 
-    const userConversations = conversations.filter((c) => c.type === 'User')
-    if (userConversations.length === 0) return
+  useEffect(() => {
+    if (!userInfo || !userThreadIdsKey) return
+
+    const userThreadIds = userThreadIdsKey.split(',').filter(Boolean)
+    if (userThreadIds.length === 0) return
 
     const fetchAllUserStatuses = async () => {
       // Fetch status for all user conversations in parallel
-      const promises = userConversations.map((conv) =>
-        fetch(`/api/zalo/user-status?userId=${encodeURIComponent(conv.threadId)}`)
+      const promises = userThreadIds.map((threadId) =>
+        fetch(`/api/zalo/user-status?userId=${encodeURIComponent(threadId)}`)
           .then((res) => res.json())
           .then((data) => {
             if (data.success && data.lastActiveTs > 0) {
-              return { threadId: conv.threadId, lastActiveTs: data.lastActiveTs }
+              return { threadId, lastActiveTs: data.lastActiveTs }
             }
             return null
           })
-          .catch((err) => {
-            console.error(`Failed to fetch status for ${conv.threadId}:`, err)
-            return null
-          })
+          .catch(() => null) // Silent fail
       )
 
       const results = await Promise.all(promises)
@@ -1183,17 +1268,16 @@ export default function ZaloChatView({
 
       if (Object.keys(statusMap).length > 0) {
         setUserLastActiveMap((prev) => ({ ...prev, ...statusMap }))
-        console.log(`✅ Fetched online status for ${Object.keys(statusMap).length} users`)
       }
     }
 
     // Initial fetch
     fetchAllUserStatuses()
 
-    // Refresh every 30 seconds (adjust as needed)
-    const interval = setInterval(fetchAllUserStatuses, 30000)
+    // Refresh every 60 seconds
+    const interval = setInterval(fetchAllUserStatuses, 60000)
     return () => clearInterval(interval)
-  }, [userInfo, conversations])
+  }, [userInfo, userThreadIdsKey])
 
   const getUserOnlineStatus = (threadId: string) => {
     const lastActiveTs = userLastActiveMap[threadId]
@@ -1664,6 +1748,121 @@ export default function ZaloChatView({
     }
   }
 
+  // Handle Send Message (text or file)
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    
+    if (!activeThreadId) return
+    if (!inputText.trim() && !selectedFile) return
+    if (isSending) return
+
+    setIsSending(true)
+    
+    const activeConv = conversations.find((c) => c.threadId === activeThreadId)
+    const threadType = activeConv?.type === 'Group' ? 1 : 0
+
+    try {
+      const formData = new FormData()
+      formData.append('threadId', activeThreadId)
+      formData.append('threadType', String(threadType))
+      formData.append('message', inputText.trim())
+
+      // Add quote/reply data if replying to a message
+      if (replyingToMessage) {
+        formData.append('quote', JSON.stringify({
+          id: replyingToMessage.id,
+          msgId: replyingToMessage.msgId,
+          fromName: replyingToMessage.fromName,
+          content: typeof replyingToMessage.content === 'string' 
+            ? replyingToMessage.content 
+            : JSON.stringify(replyingToMessage.content)
+        }))
+      }
+
+      if (selectedFile) {
+        formData.append('file', selectedFile)
+        formData.append('fileName', selectedFile.name)
+      }
+
+      // Optimistic UI update
+      const tempMsg: Message = {
+        id: Date.now(),
+        threadId: activeThreadId,
+        from: userInfo?.userId || 'self',
+        fromName: 'Bạn (Chính mình)',
+        avatar: userInfo?.avatar,
+        content: selectedFile ? `[Đang gửi: ${selectedFile.name}]` : inputText.trim(),
+        timestamp: new Date().toISOString(),
+        type: activeConv?.type || 'User',
+        isSelf: true,
+        quote: replyingToMessage ? {
+          id: replyingToMessage.id,
+          msgId: replyingToMessage.msgId,
+          fromName: replyingToMessage.fromName,
+          content: typeof replyingToMessage.content === 'string' 
+            ? replyingToMessage.content 
+            : '[Media]'
+        } : undefined
+      }
+
+      setHistoryMessages((prev) => ({
+        ...prev,
+        [activeThreadId]: [...(prev[activeThreadId] || []), tempMsg]
+      }))
+
+      // Clear input
+      setInputText('')
+      setSelectedFile(null)
+      setFilePreviewUrl(null)
+      setReplyingToMessage(null)
+
+      // Reset textarea height
+      const textarea = document.querySelector('textarea')
+      if (textarea) {
+        textarea.style.height = 'auto'
+      }
+
+      // Send to API
+      const res = await fetch('/api/zalo/messages', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await res.json()
+      if (!data.success) {
+        setSyncNotice(`⚠️ Lỗi gửi tin nhắn: ${data.error || 'Vui lòng thử lại'}`)
+        // Remove optimistic message on error
+        setHistoryMessages((prev) => ({
+          ...prev,
+          [activeThreadId]: (prev[activeThreadId] || []).filter(m => m.id !== tempMsg.id)
+        }))
+      } else {
+        // Update conversation last message
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.threadId === activeThreadId
+              ? {
+                  ...c,
+                  lastMessage: 'Bạn: ' + (selectedFile ? `[File: ${selectedFile.name}]` : inputText.trim()),
+                  lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                  lastTimestamp: Date.now(),
+                }
+              : c
+          )
+        )
+      }
+    } catch (err: any) {
+      console.error('Failed to send message:', err)
+      setSyncNotice('⚠️ Lỗi gửi tin nhắn. Vui lòng thử lại!')
+    } finally {
+      setIsSending(false)
+      // Auto scroll to bottom
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 100)
+    }
+  }
+
   // 2. Sync conversations from incoming message logs
   useEffect(() => {
     if (!logs || logs.length === 0) return
@@ -1863,111 +2062,6 @@ export default function ZaloChatView({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs, historyMessages, activeThreadId])
-
-  // Send message API call
-  const handleSendMessage = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    if ((!inputText.trim() && !selectedFile) || !activeThreadId || isSending) return
-
-    let messageText = inputText.trim()
-    if (replyingToMessage) {
-      messageText = `» [Trả lời ${replyingToMessage.fromName}]: "${replyingToMessage.content}"\n${messageText}`
-      setReplyingToMessage(null)
-    }
-
-    const currentFile = selectedFile
-    setInputText('')
-    setSelectedFile(null)
-    setFilePreviewUrl(null)
-    setIsSending(true)
-    // Reset textarea height after clearing
-    const textarea = document.querySelector('textarea') as HTMLTextAreaElement
-    if (textarea) textarea.style.height = '38px'
-
-    const activeConv = conversations.find((c) => c.threadId === activeThreadId)
-    const threadType = activeConv?.type === 'Group' ? 1 : 0
-
-    // 1. Instantly append to local chat view for 0ms lag
-    let localContent: any = messageText
-    if (currentFile) {
-      if (currentFile.type.startsWith('image/')) {
-        localContent = JSON.stringify({
-          type: 'image',
-          name: currentFile.name,
-          caption: messageText,
-          url: filePreviewUrl || '',
-        })
-      } else {
-        localContent = JSON.stringify({
-          type: 'file',
-          name: currentFile.name,
-          size: currentFile.size,
-          caption: messageText,
-        })
-      }
-    }
-
-    const tempSentMsg: Message = {
-      id: Date.now(),
-      threadId: activeThreadId,
-      from: 'Self',
-      fromName: 'Bạn (Chính mình)',
-      content: localContent,
-      timestamp: new Date().toISOString(),
-      type: activeConv?.type || 'User',
-      isSelf: true,
-    }
-
-    setHistoryMessages((prev) => ({
-      ...prev,
-      [activeThreadId]: [...(prev[activeThreadId] || []), tempSentMsg],
-    }))
-
-    // Bump active conversation to top of list
-    setConversations((prev) => {
-      const map = new Map<string, Conversation>()
-      prev.forEach((c) => map.set(c.threadId, c))
-      const existing = map.get(activeThreadId)
-      if (existing) {
-        let previewText = messageText
-        if (currentFile) {
-          previewText = currentFile.type.startsWith('image/') ? '[Hình ảnh]' : `[Tập tin: ${currentFile.name}]`
-        }
-        map.set(activeThreadId, {
-          ...existing,
-          lastMessage: `Bạn: ${previewText}`,
-          lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-          lastTimestamp: Date.now(),
-        })
-      }
-      const list = Array.from(map.values())
-      list.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
-      return list
-    })
-
-    try {
-      const formData = new FormData()
-      formData.append('threadId', activeThreadId)
-      formData.append('threadType', String(threadType))
-      formData.append('message', messageText)
-      if (currentFile) {
-        formData.append('file', currentFile)
-      }
-
-      const res = await fetch('/api/zalo/messages', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (!data.success) {
-        alert(data.error || 'Lỗi gửi tin nhắn/tập tin')
-      }
-    } catch (err: any) {
-      console.error('Failed to send message:', err)
-    } finally {
-      setIsSending(false)
-    }
-  }
 
   // Toggle whitelist (auto-reply enable for group)
   const toggleWhitelistGroup = (threadId: string) => {
@@ -2663,6 +2757,7 @@ export default function ZaloChatView({
                   return (
                     <div
                       key={msg.id || idx}
+                      data-msg-id={msg.globalMsgId || msg.msgId || msg.id}
                       className={`flex gap-2.5 items-start ${
                         isMine ? 'flex-row-reverse' : 'flex-row'
                       } ${isFirstInGroup ? 'mt-3' : 'mt-1'} animate-slideIn group relative z-10`}
@@ -2786,6 +2881,97 @@ export default function ZaloChatView({
                                       ★
                                     </span>
                                   )}
+
+                                  {/* Quoted/Replied Message Preview */}
+                                  {msg.quote && (
+                                    <div
+                                      onClick={() => {
+                                        // Scroll to quoted message - try ALL possible ID fields
+                                        const quoteIds = [
+                                          msg.quote?.id,
+                                          msg.quote?.msgId,
+                                        ].filter(Boolean)
+                                        
+                                        console.log('🔍 [Click Quote] Searching for quoted message:', {
+                                          quoteIds,
+                                          fullQuote: msg.quote,
+                                          currentMessage: { id: msg.id, msgId: msg.msgId, globalMsgId: msg.globalMsgId }
+                                        })
+                                        
+                                        let quotedEl: Element | null = null
+                                        
+                                        // Try each ID
+                                        for (const qid of quoteIds) {
+                                          quotedEl = document.querySelector(`[data-msg-id="${qid}"]`)
+                                          if (quotedEl) {
+                                            console.log(`✅ [Click Quote] Found with ID: ${qid}`)
+                                            break
+                                          }
+                                        }
+                                        
+                                        // If not found by ID, try to find by content match
+                                        if (!quotedEl && msg.quote?.content) {
+                                          console.log('🔍 [Click Quote] Trying content match...')
+                                          const allMessages = activeMessages
+                                          const matchedMsg = allMessages.find(m => {
+                                            const mContent = typeof m.content === 'string' ? m.content : ''
+                                            const qContent = msg.quote?.content || ''
+                                            return mContent.includes(qContent) || qContent.includes(mContent)
+                                          })
+                                          
+                                          if (matchedMsg) {
+                                            const matchId = matchedMsg.globalMsgId || matchedMsg.msgId || matchedMsg.id
+                                            quotedEl = document.querySelector(`[data-msg-id="${matchId}"]`)
+                                            if (quotedEl) {
+                                              console.log('✅ [Click Quote] Found by content match')
+                                            }
+                                          }
+                                        }
+                                        
+                                        if (quotedEl) {
+                                          quotedEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                          // Highlight effect
+                                          quotedEl.classList.add('ring-2', 'ring-amber-400', 'ring-opacity-70', 'transition-all')
+                                          setTimeout(() => {
+                                            quotedEl?.classList.remove('ring-2', 'ring-amber-400', 'ring-opacity-70', 'transition-all')
+                                          }, 2000)
+                                        } else {
+                                          const availableIds = Array.from(document.querySelectorAll('[data-msg-id]'))
+                                            .map(el => el.getAttribute('data-msg-id'))
+                                            .slice(0, 10)
+                                          console.warn('⚠️ [Click Quote] Message not found.', {
+                                            searchedFor: quoteIds,
+                                            availableIds,
+                                            totalMessages: activeMessages.length
+                                          })
+                                          setSyncNotice('⚠️ Tin nhắn gốc không tìm thấy (có thể đã bị xóa hoặc nằm ngoài lịch sử)')
+                                        }
+                                      }}
+                                      className={`mb-2 p-2 rounded-lg border-l-4 cursor-pointer transition-all hover:opacity-80 hover:scale-[1.01] ${
+                                        isMine 
+                                          ? 'bg-white/10 border-white/40' 
+                                          : 'bg-dark-300/80 border-sky-500/60'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 mb-0.5">
+                                        <svg className="w-3 h-3 opacity-60" fill="currentColor" viewBox="0 0 24 24">
+                                          <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
+                                        </svg>
+                                        <span className="text-[10px] font-bold opacity-70">
+                                          {msg.quote.fromName}
+                                        </span>
+                                      </div>
+                                      <p className="text-[11px] opacity-80 truncate">
+                                        {typeof msg.quote.content === 'string' 
+                                          ? (msg.quote.content.length > 60 
+                                              ? msg.quote.content.substring(0, 60) + '...' 
+                                              : msg.quote.content)
+                                          : '[Media]'}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Actual Message Content */}
                                   {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url), mediaCache, setMediaCache)}
                                 </div>
                               )
@@ -3185,6 +3371,7 @@ export default function ZaloChatView({
                   {/* 3. Sticker & Emoji Picker Toggle Button */}
                   <button
                     type="button"
+                    data-sticker-toggle
                     onClick={() => setShowStickerPicker((prev) => !prev)}
                     title="Sticker & Biểu cảm Emoji"
                     className={`p-2 rounded-xl transition-all ${

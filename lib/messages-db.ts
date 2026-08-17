@@ -39,20 +39,35 @@ export async function saveMessage(userId: string, message: ZaloMessage): Promise
       quote: message.quote
     }
 
+    // Ensure msg_id is not null for ON CONFLICT to work
+    // Use cliMsgId, or generate a unique ID based on thread + timestamp + content
+    let msgId = message.msgId
+    if (!msgId) {
+      if (message.cliMsgId) {
+        msgId = message.cliMsgId
+      } else {
+        // Generate unique ID: thread_timestamp_hash
+        const contentHash = message.content?.toString().substring(0, 20) || ''
+        msgId = `${message.threadId}_${message.timestamp || Date.now()}_${contentHash.replace(/[^a-zA-Z0-9]/g, '')}`
+      }
+    }
+
     await pool.query(`
       INSERT INTO zalo_messages (
         user_id, msg_id, cli_msg_id, thread_id, content,
         message_type, sender_id, sender_name, is_self,
         timestamp, replied, is_undo, metadata
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-      ON CONFLICT (user_id, thread_id, msg_id) DO UPDATE SET
+      ON CONFLICT (user_id, thread_id, msg_id) 
+      WHERE msg_id IS NOT NULL
+      DO UPDATE SET
         content = EXCLUDED.content,
         replied = EXCLUDED.replied,
         is_undo = EXCLUDED.is_undo,
         metadata = EXCLUDED.metadata
     `, [
       userId,
-      message.msgId || null,
+      msgId, // Always has a value now
       message.cliMsgId || null,
       message.threadId,
       typeof message.content === 'string' ? message.content : JSON.stringify(message.content),

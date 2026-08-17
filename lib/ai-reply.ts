@@ -381,6 +381,7 @@ export function shouldUseAIReply(message: string): boolean {
     // Câu hỏi thân mật & xưng hô
     'em ơi', 'em oi', 'anh ơi', 'anh oi', 'chị ơi', 'chi oi',
     'bạn ơi', 'ban oi', 'ơi', 'oi', 'này', 'nay', 'hey',
+    'alo', 'alô', 'hello', 'hi', 'chào', 'chao', 'yo',
     'nghe', 'listen', 'nghe này', 'nghe nay', 'biết không', 'biet khong',
     'bro', 'sis', 'babe', 'baby', 'dear', 'honey',
     'idol', 'idol ơi', 'sếp', 'sep', 'boss',

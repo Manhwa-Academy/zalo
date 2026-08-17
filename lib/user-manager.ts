@@ -212,8 +212,9 @@ export class UserManager {
     if (!pool) return;
 
     try {
+      // Delete app_state to force QR login on next attempt
       await pool.query(
-        'UPDATE zalo_sessions SET is_active = false WHERE user_id = $1',
+        'UPDATE zalo_sessions SET is_active = false, app_state = NULL WHERE user_id = $1',
         [userId]
       );
 

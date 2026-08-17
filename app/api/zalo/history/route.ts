@@ -62,7 +62,7 @@ export async function GET(request: Request) {
           }
         }
       } catch (e: any) {
-        console.error('getGroupInfo error in history:', e.message || e)
+        // Silent error - getGroupInfo failed
       }
     }
 
@@ -74,10 +74,8 @@ export async function GET(request: Request) {
     if (type === 'Group' && typeof zaloApi.getGroupChatHistory === 'function') {
       // GROUP CHAT HISTORY
       try {
-        console.log(`📥 Fetching group chat history for ${threadId}...`)
         const res = await zaloApi.getGroupChatHistory(threadId, 100) // Tăng từ 50 → 100
         const groupMsgs = res?.groupMsgs || res?.data?.groupMsgs || []
-        console.log(`✅ Fetched ${groupMsgs.length} group messages for ${threadId}`)
 
         fetchedMsgs = groupMsgs.map((m: any) => {
           const raw = m.data || m
@@ -183,6 +181,20 @@ export async function GET(request: Request) {
             timestampStr = numTs > 100000000000 ? new Date(numTs).toISOString() : new Date(numTs * 1000).toISOString()
           }
 
+          // Parse quote/reply data if present
+          let quote: any = undefined
+          if (raw.quote || raw.replyTo || raw.refMsg) {
+            const quoteData = raw.quote || raw.replyTo || raw.refMsg
+            quote = {
+              id: quoteData.msgId || quoteData.id || quoteData.cliMsgId,
+              msgId: quoteData.msgId || quoteData.id,
+              fromName: quoteData.fromName || quoteData.dName || 'Người dùng',
+              content: typeof quoteData.content === 'string' 
+                ? quoteData.content 
+                : (quoteData.msg || quoteData.message || '[Media]')
+            }
+          }
+
           return {
             id: raw.msgId || raw.cliMsgId || (Date.now() + Math.random()),
             msgId: raw.msgId || raw.cliMsgId,
@@ -195,22 +207,17 @@ export async function GET(request: Request) {
             timestamp: timestampStr,
             type: 'Group',
             isSelf: !!m.isSelf,
+            quote: quote,
           }
         })
       } catch (err: any) {
-        if (err?.message?.includes('404') || err?.code === 404 || String(err).includes('404')) {
-          console.log(`ℹ️ getGroupChatHistory 404 for ${threadId}`)
-        } else {
-          console.error('getGroupChatHistory error:', err)
-        }
+        // Silent error - getGroupChatHistory failed
       }
     } else if (type === 'User' && typeof zaloApi.getChatHistory === 'function') {
       // USER (1-1) CHAT HISTORY
       try {
-        console.log(`📥 Fetching user chat history for ${threadId}...`)
         const res = await zaloApi.getChatHistory(threadId, 100, 0) // Tăng từ 50 → 100
         const userMsgs = res?.data || res?.messages || []
-        console.log(`✅ Fetched ${userMsgs.length} user messages for ${threadId}`)
 
         fetchedMsgs = userMsgs.map((m: any) => {
           const raw = m.data || m
@@ -309,6 +316,20 @@ export async function GET(request: Request) {
             timestampStr = numTs > 100000000000 ? new Date(numTs).toISOString() : new Date(numTs * 1000).toISOString()
           }
 
+          // Parse quote/reply data if present
+          let quote: any = undefined
+          if (raw.quote || raw.replyTo || raw.refMsg) {
+            const quoteData = raw.quote || raw.replyTo || raw.refMsg
+            quote = {
+              id: quoteData.msgId || quoteData.id || quoteData.cliMsgId,
+              msgId: quoteData.msgId || quoteData.id,
+              fromName: quoteData.fromName || quoteData.dName || 'Người dùng',
+              content: typeof quoteData.content === 'string' 
+                ? quoteData.content 
+                : (quoteData.msg || quoteData.message || '[Media]')
+            }
+          }
+
           return {
             id: raw.msgId || raw.cliMsgId || (Date.now() + Math.random()),
             msgId: raw.msgId || raw.cliMsgId,
@@ -321,14 +342,11 @@ export async function GET(request: Request) {
             timestamp: timestampStr,
             type: 'User',
             isSelf: !!m.isSelf,
+            quote: quote,
           }
         })
       } catch (err: any) {
-        if (err?.message?.includes('404') || err?.code === 404 || String(err).includes('404')) {
-          console.log(`ℹ️ getChatHistory 404 for ${threadId}`)
-        } else {
-          console.error('getChatHistory error:', err)
-        }
+        // Silent error - getChatHistory failed
       }
     }
 
@@ -356,7 +374,6 @@ export async function GET(request: Request) {
     if (uidsMissingAvatars.size > 0 && typeof zaloApi.getUserInfo === 'function') {
       try {
         const batch = Array.from(uidsMissingAvatars).slice(0, 30)
-        console.log(`🔍 Querying getUserInfo for ${batch.length} uids missing avatars...`)
         const uRes = await zaloApi.getUserInfo(batch)
         const uData = uRes?.data || uRes?.changed_profiles || uRes
         if (uData && typeof uData === 'object') {
@@ -378,7 +395,7 @@ export async function GET(request: Request) {
           })
         }
       } catch (e: any) {
-        console.error('getUserInfo error in history:', e.message || e)
+        // Silent error - getUserInfo failed
       }
     }
 

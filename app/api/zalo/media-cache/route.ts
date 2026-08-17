@@ -29,7 +29,6 @@ export async function POST(request: Request) {
     const saved = await saveMediaToCache(userIdOrNull, fileName, url, mediaType || 'image', giphyId)
     
     if (saved) {
-      console.log(`💾 [POST /api/zalo/media-cache] Saved: ${fileName} -> ${url.slice(0, 50)}...`)
       return NextResponse.json({ success: true })
     } else {
       return NextResponse.json({ error: 'Failed to save to cache' }, { status: 500 })
