@@ -287,13 +287,17 @@ async function getReplyText(messageContent?: string, senderName?: string, thread
         
         if (!aiResult.error && aiResult.reply) {
           console.log(`🤖 [AI] Generated reply (${aiResult.tokensUsed} tokens): ${aiResult.reply.slice(0, 50)}...`)
-          return aiResult.reply
+          return aiResult.reply // ✅ RETURN IMMEDIATELY - Don't fallback to preset
         } else {
           console.warn(`⚠️ [AI] Failed, fallback to normal: ${aiResult.error}`)
+          // Only fallback on error, continue to preset logic below
         }
       } catch (error) {
         console.error('❌ [AI] Error generating reply:', error)
+        // Only fallback on error, continue to preset logic below
       }
+    } else {
+      console.log(`⚠️ [AI] Not triggered - mode: ${aiTriggerMode}, message: "${messageContent.slice(0, 50)}..."`)
     }
   }
   

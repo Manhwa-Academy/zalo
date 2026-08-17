@@ -3,7 +3,7 @@
  * Replaces .zalo-stats.json file system storage
  */
 
-import { db } from './db'
+import pool from './postgres'
 
 export interface ZaloStats {
   totalReceived: number
@@ -21,9 +21,17 @@ export interface ZaloStats {
  * Get overall stats for a user
  */
 export async function getOverallStats(userId: string): Promise<ZaloStats> {
+  if (!pool) {
+    return {
+      totalReceived: 0,
+      totalSent: 0,
+      totalAutoReplied: 0
+    }
+  }
+
   try {
     // Get overall stats (thread_id = NULL)
-    const overallResult = await db.query(`
+    const overallResult = await pool.query(`
       SELECT 
         total_received as "totalReceived",
         total_sent as "totalSent",
@@ -43,7 +51,7 @@ export async function getOverallStats(userId: string): Promise<ZaloStats> {
     }
 
     // Get per-thread stats
-    const threadsResult = await db.query(`
+    const threadsResult = await pool.query(`
       SELECT 
         thread_id as "threadId",
         thread_name as "threadName",
@@ -83,8 +91,10 @@ export async function getOverallStats(userId: string): Promise<ZaloStats> {
  * Increment overall received count
  */
 export async function incrementReceived(userId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, stats_date,
         total_received, received_today
@@ -104,8 +114,10 @@ export async function incrementReceived(userId: string): Promise<void> {
  * Increment overall sent count
  */
 export async function incrementSent(userId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, stats_date,
         total_sent, sent_today
@@ -125,8 +137,10 @@ export async function incrementSent(userId: string): Promise<void> {
  * Increment overall auto-replied count
  */
 export async function incrementAutoReplied(userId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, stats_date,
         total_auto_replied, auto_replied_today
@@ -150,8 +164,10 @@ export async function incrementThreadReceived(
   threadId: string,
   threadName?: string
 ): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, thread_name, stats_date,
         total_received, received_today
@@ -176,8 +192,10 @@ export async function incrementThreadSent(
   threadId: string,
   threadName?: string
 ): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, thread_name, stats_date,
         total_sent, sent_today
@@ -202,8 +220,10 @@ export async function incrementThreadAutoReplied(
   threadId: string,
   threadName?: string
 ): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_stats (
         user_id, thread_id, thread_name, stats_date,
         total_auto_replied, auto_replied_today
@@ -224,8 +244,16 @@ export async function incrementThreadAutoReplied(
  * Get stats for a specific thread
  */
 export async function getThreadStats(userId: string, threadId: string) {
+  if (!pool) {
+    return {
+      received: 0,
+      sent: 0,
+      autoReplied: 0
+    }
+  }
+
   try {
-    const result = await db.query(`
+    const result = await pool.query(`
       SELECT 
         total_received as "received",
         total_sent as "sent",
@@ -261,8 +289,10 @@ export async function getThreadStats(userId: string, threadId: string) {
  * Reset stats for a user
  */
 export async function resetStats(userId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       DELETE FROM zalo_stats WHERE user_id = $1
     `, [userId])
   } catch (error) {

@@ -3,7 +3,7 @@
  * Replaces .zalo-messages.json file system storage
  */
 
-import { db } from './db'
+import pool from './postgres'
 
 export interface ZaloMessage {
   id?: string
@@ -28,13 +28,18 @@ export interface ZaloMessage {
  * Save a message to database
  */
 export async function saveMessage(userId: string, message: ZaloMessage): Promise<void> {
+  if (!pool) {
+    console.warn('⚠️ Database pool not available, skipping message save')
+    return
+  }
+
   try {
     const metadata = {
       avatar: message.avatar,
       quote: message.quote
     }
 
-    await db.query(`
+    await pool.query(`
       INSERT INTO zalo_messages (
         user_id, msg_id, cli_msg_id, thread_id, content,
         message_type, sender_id, sender_name, is_self,
@@ -70,19 +75,24 @@ export async function saveMessage(userId: string, message: ZaloMessage): Promise
  * Save multiple messages in batch
  */
 export async function saveMessages(userId: string, messages: ZaloMessage[]): Promise<void> {
+  if (!pool) {
+    console.warn('⚠️ Database pool not available, skipping messages save')
+    return
+  }
+
   if (messages.length === 0) return
 
   try {
     // Use transaction for better performance
-    await db.query('BEGIN')
+    await pool.query('BEGIN')
 
     for (const message of messages) {
       await saveMessage(userId, message)
     }
 
-    await db.query('COMMIT')
+    await pool.query('COMMIT')
   } catch (error) {
-    await db.query('ROLLBACK')
+    await pool.query('ROLLBACK')
     console.error('❌ Error saving messages batch:', error)
     throw error
   }
@@ -96,8 +106,13 @@ export async function getThreadMessages(
   threadId: string,
   limit: number = 100
 ): Promise<ZaloMessage[]> {
+  if (!pool) {
+    console.warn('⚠️ Database pool not available')
+    return []
+  }
+
   try {
-    const result = await db.query(`
+    const result = await pool.query(`
       SELECT 
         id, msg_id as "msgId", cli_msg_id as "cliMsgId",
         thread_id as "threadId", content, message_type as "messageType",
@@ -136,8 +151,13 @@ export async function getThreadMessages(
  * Get all messages for a user
  */
 export async function getAllMessages(userId: string, limit: number = 1000): Promise<ZaloMessage[]> {
+  if (!pool) {
+    console.warn('⚠️ Database pool not available')
+    return []
+  }
+
   try {
-    const result = await db.query(`
+    const result = await pool.query(`
       SELECT 
         id, msg_id as "msgId", cli_msg_id as "cliMsgId",
         thread_id as "threadId", content, message_type as "messageType",
@@ -176,8 +196,10 @@ export async function getAllMessages(userId: string, limit: number = 1000): Prom
  * Mark message as replied
  */
 export async function markMessageReplied(userId: string, msgId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       UPDATE zalo_messages
       SET replied = true
       WHERE user_id = $1 AND msg_id = $2
@@ -191,8 +213,10 @@ export async function markMessageReplied(userId: string, msgId: string): Promise
  * Mark message as undone/recalled
  */
 export async function markMessageUndone(userId: string, msgId: string): Promise<void> {
+  if (!pool) return
+
   try {
-    await db.query(`
+    await pool.query(`
       UPDATE zalo_messages
       SET is_undo = true
       WHERE user_id = $1 AND msg_id = $2
@@ -206,8 +230,10 @@ export async function markMessageUndone(userId: string, msgId: string): Promise<
  * Delete old messages (cleanup)
  */
 export async function deleteOldMessages(userId: string, daysOld: number = 30): Promise<number> {
+  if (!pool) return 0
+
   try {
-    const result = await db.query(`
+    const result = await pool.query(`
       DELETE FROM zalo_messages
       WHERE user_id = $1 
       AND created_at < NOW() - INTERVAL '${daysOld} days'
@@ -224,13 +250,15 @@ export async function deleteOldMessages(userId: string, daysOld: number = 30): P
  * Count messages
  */
 export async function countMessages(userId: string, threadId?: string): Promise<number> {
+  if (!pool) return 0
+
   try {
     const query = threadId
       ? 'SELECT COUNT(*) FROM zalo_messages WHERE user_id = $1 AND thread_id = $2'
       : 'SELECT COUNT(*) FROM zalo_messages WHERE user_id = $1'
     
     const params = threadId ? [userId, threadId] : [userId]
-    const result = await db.query(query, params)
+    const result = await pool.query(query, params)
     
     return parseInt(result.rows[0].count) || 0
   } catch (error) {

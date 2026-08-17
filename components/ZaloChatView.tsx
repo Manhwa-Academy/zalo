@@ -452,6 +452,41 @@ function renderMessageContent(
     new Set(knownNames.filter((n) => n && typeof n === 'string' && n.trim().length > 0))
   ).sort((a, b) => b.length - a.length)
 
+  // Decode Zalo icon codes (/-strong, /-heart, etc.) to emoji
+  const decodeZaloIcons = (text: string): string => {
+    const iconMap: Record<string, string> = {
+      '/-strong': '👍',
+      '/-heart': '❤️',
+      '/-haha': '😂',
+      '/-wow': '😮',
+      '/-cry': '😢',
+      '/-angry': '😠',
+      '/-sad': '😞',
+      '/-love': '🥰',
+      '/-cool': '😎',
+      '/-smile': '😊',
+      '/-laugh': '🤣',
+      '/-wink': '😉',
+      '/-kiss': '😘',
+      '/-fun': '🤪',
+      '/-surprised': '😲',
+      '/-confounded': '😖',
+      '/-sweat': '😅',
+      '/-shy': '😳',
+      '/-sleepy': '😴',
+      '/-mask': '😷'
+    }
+    
+    let decoded = text
+    for (const [code, emoji] of Object.entries(iconMap)) {
+      decoded = decoded.replace(new RegExp(code.replace('/', '\\/'), 'g'), emoji)
+    }
+    return decoded
+  }
+
+  // Decode icons first
+  textContent = decodeZaloIcons(textContent)
+
   // URL pattern to detect links
   const urlPattern = /(https?:\/\/[^\s]+)/gi
   
@@ -2088,6 +2123,14 @@ export default function ZaloChatView({
         content: preferredContent,
       }
     }
+  })
+
+  // Sort messages by timestamp (oldest first, newest last)
+  // This ensures messages display in correct chronological order
+  activeMessages.sort((a, b) => {
+    const tsA = parseTs(a.timestamp)
+    const tsB = parseTs(b.timestamp)
+    return tsA - tsB // Ascending order (oldest → newest)
   })
 
   // Filtered conversation list
