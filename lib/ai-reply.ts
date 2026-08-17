@@ -306,7 +306,7 @@ export function shouldUseAIReply(message: string): boolean {
     
     // Khi nào / Bao giờ
     'khi nào', 'kn', 'bao giờ', 'bg', 'bao h', 'bh', 'khi nao', 'bao gio',
-    'lúc nào', 'ln', 'luc nao',
+    'lúc nào', 'ln', 'luc nao', 'bh đi', 'bh nào',
     
     // Ở đâu / Đâu
     'ở đâu', 'đâu', 'chỗ nào', 'o dau', 'dau', 'where',
@@ -314,13 +314,13 @@ export function shouldUseAIReply(message: string): boolean {
     // Ai / Người nào
     'ai', 'người nào', 'who', 'ai vậy', 'ai đó', 'nguoi nao',
     
-    // Bao nhiêu / Giá
+    // Bao nhiêu / Giá / Bao lâu
     'bao nhiêu', 'bn', 'bao nhiu', 'giá', 'gia', 'bao nhieu', 
-    'cost', 'price', 'bao lâu', 'bl',
+    'cost', 'price', 'bao lâu', 'bl', 'bl nữa', 'bl nữa',
     
     // Gì / Cái gì
     'gì', 'gi', 'j', 'cái gì', 'cai gi', 'what', 'cái j', 'cai j',
-    'gì vậy', 'gi vậy', 'j vậy', 'gì thế', 'j z',
+    'gì vậy', 'gi vậy', 'j vậy', 'gì thế', 'j z', 'làm j', 'lam j',
     
     // Có phải / Phải không
     'có phải', 'có phải không', 'phải không', 'pk', 'có phải k',
@@ -328,7 +328,7 @@ export function shouldUseAIReply(message: string): boolean {
     
     // Được không / OK không
     'được không', 'đk', 'duoc khong', 'ok không', 'okk', 'ok ko',
-    'được k', 'duoc k', 'đc không', 'dc khong', 'dc k',
+    'được k', 'duoc k', 'đc không', 'dc khong', 'dc k', 'dc', 'đc',
     
     // Có thể / Có được
     'có thể', 'ct', 'co the', 'có được không', 'có được k',
@@ -404,7 +404,7 @@ export function shouldUseAIReply(message: string): boolean {
     
     // Phủ định cần làm rõ
     'không hiểu', 'kh', 'khong hieu', 'chẳng hiểu', 'chang hieu',
-    'không biết', 'kb', 'khong biet', 'chả biết', 'cha biet', 'ko biết',
+    'không biết', 'kb', 'khong biet', 'chả biết', 'cha biet', 'ko biết', 'ko', 'k',
     'không rõ', 'ko rõ', 'khong ro', 'chưa rõ', 'chua ro',
     'không phải', 'khong phai', 'ko phải', 'chẳng phải', 'chang phai',
     'sai', 'wrong', 'incorrect', 'sai rồi', 'sai roi',
@@ -419,7 +419,7 @@ export function shouldUseAIReply(message: string): boolean {
     
     // Trạng thái & tình huống
     'đang', 'dang', 'đang làm', 'dang lam', 'doing',
-    'rồi', 'roi', 'done', 'xong', 'finished',
+    'rồi', 'roi', 'r', 'done', 'xong', 'finished',
     'chưa', 'chua', 'not yet', 'chưa xong', 'chua xong',
     'sắp', 'sap', 'soon', 'will', 'sắp rồi', 'sap roi',
     'vừa', 'vua', 'just', 'mới', 'moi', 'new',
@@ -433,9 +433,13 @@ export function shouldUseAIReply(message: string): boolean {
     
     // Khẳng định & phủ định
     'đúng', 'dung', 'right', 'correct', 'yes',
-    'ừ', 'u', 'uh', 'yeah', 'yep', 'yup',
-    'không', 'khong', 'ko', 'no', 'nope',
-    'chắc', 'chac', 'sure', 'chắc chắn', 'chac chan',
+    'ừ', 'u', 'uh', 'yeah', 'yep', 'yup', 'oke',
+    'không', 'khong', 'ko', 'no', 'nope', 'k',
+    'chắc', 'chac', 'sure', 'chắc chắn', 'chac chan', 'cx',
+    
+    // Xưng hô thân mật (mày/tao style)
+    'mày', 'may', 'm', 'mi', 'tao', 't', 'tau',
+    'ông', 'ong', 'bà', 'ba', 'thằng', 'thang', 'con',
   ]
   
   if (aiKeywords.some(keyword => msg.includes(keyword))) {
