@@ -37,8 +37,26 @@ export async function POST(request: Request) {
     }
 
     if (action === 'clearLogs') {
+      // Clear in-memory cache
       clearStoredMessages()
-      return NextResponse.json({ success: true, message: 'Message logs cleared' })
+      
+      // Clear database - delete all messages for current user
+      try {
+        const { getCurrentUserId } = await import('@/lib/multi-user-zalo')
+        const userId = await getCurrentUserId()
+        
+        if (userId) {
+          const pool = (await import('@/lib/postgres')).default
+          if (pool) {
+            await pool.query('DELETE FROM zalo_messages WHERE user_id = $1', [userId])
+            console.log('✅ [Listener] Deleted all messages from database for user:', userId)
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ [Listener] Failed to delete messages from database:', error)
+      }
+      
+      return NextResponse.json({ success: true, message: 'Message logs cleared from memory and database' })
     }
 
     return NextResponse.json({ success: true, message: 'Listener status checked' })

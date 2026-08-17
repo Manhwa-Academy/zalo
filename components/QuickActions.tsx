@@ -87,10 +87,10 @@ export default function QuickActions({ onResetStats, onExportLogs, onClearLogs }
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-sky-300 transition-colors">
-                    1. Xóa trong tin nhắn
+                    1. Xóa trống tin nhắn
                   </h4>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Xóa sạch lịch sử hiển thị tin nhắn trong giao diện Zalo Chat
+                    Xóa sạch lịch sử hiển thị tin nhắn trong giao diện Zalo Chat (chỉ giao diện)
                   </p>
                 </div>
               </button>
@@ -105,10 +105,10 @@ export default function QuickActions({ onResetStats, onExportLogs, onClearLogs }
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                    2. Xóa mỗi phần log
+                    2. Xóa mọi phần log
                   </h4>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Xóa lịch sử sự kiện Bot trong Dashboard & file tin nhắn tự động
+                    Xóa lịch sử sự kiện Bot trong Dashboard & database (table zalo_messages)
                   </p>
                 </div>
               </button>
@@ -126,7 +126,7 @@ export default function QuickActions({ onResetStats, onExportLogs, onClearLogs }
                     3. Xóa cả hai
                   </h4>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Xóa hoàn toàn cả Lịch sử Chat Zalo lẫn Log sự kiện Bot
+                    Xóa hoàn toàn cả giao diện Chat Zalo + database logs (zalo_messages)
                   </p>
                 </div>
               </button>

@@ -18,7 +18,24 @@ export async function POST(request: Request) {
     }
     
     if (action === 'reset') {
+      // Reset in-memory stats
       resetStatsData()
+      
+      // Reset database - delete stats for current user
+      try {
+        const { getCurrentUserId } = await import('@/lib/multi-user-zalo')
+        const userId = await getCurrentUserId()
+        
+        if (userId) {
+          const pool = (await import('@/lib/postgres')).default
+          if (pool) {
+            await pool.query('DELETE FROM zalo_stats WHERE user_id = $1', [userId])
+            console.log('✅ [Stats] Deleted stats from database for user:', userId)
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ [Stats] Failed to delete stats from database:', error)
+      }
     }
     
     return NextResponse.json({ success: true, stats: getStatsData() })

@@ -1202,9 +1202,10 @@ export default function Home() {
                   <strong>⚠️ Cảnh báo:</strong> Hành động này sẽ xóa:
                 </p>
                 <ul className="text-xs text-amber-200 mt-2 space-y-1 ml-4">
-                  <li>• Tổng số tin nhắn</li>
-                  <li>• Số tin nhắn đã phản hồi</li>
+                  <li>• Tổng số tin nhắn nhận được</li>
+                  <li>• Tổng số tin nhắn đã trả lời</li>
                   <li>• Số cuộc trò chuyện đang hoạt động</li>
+                  <li>• <strong>Database zalo_stats</strong> (xóa vĩnh viễn)</li>
                 </ul>
               </div>
               

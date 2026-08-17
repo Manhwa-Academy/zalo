@@ -638,35 +638,47 @@ export default function ZaloChatView({
       // 1. Keep ALL existing conversations (friends, groups from API)
       prev.forEach((c) => map.set(c.threadId, c))
 
-      // 2. Update/add only conversations that appear in logs
-      logs.forEach((log) => {
+      // 2. Update/add conversations that appear in logs
+      // Process logs in reverse order (newest first) to ensure latest message wins
+      const sortedLogs = [...logs].sort((a, b) => {
+        const timeA = new Date(a.timestamp).getTime()
+        const timeB = new Date(b.timestamp).getTime()
+        return timeB - timeA // Descending (newest first)
+      })
+
+      // Track which threads we've already updated (to only use the newest message per thread)
+      const updatedThreads = new Set<string>()
+
+      sortedLogs.forEach((log) => {
         const threadId = String(log.threadId || '')
-        if (!threadId) return
+        if (!threadId || updatedThreads.has(threadId)) return
 
         const existing = map.get(threadId)
         const logTime = new Date(log.timestamp).getTime()
 
-        if (!existing || logTime > (existing.lastTimestamp || 0)) {
-          const preview = getLastMessagePreview(log.content)
-          const timeStr = new Date(log.timestamp).toLocaleTimeString('vi-VN', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })
+        // Always update if this is the newest message for this thread
+        const preview = getLastMessagePreview(log.content)
+        const timeStr = new Date(log.timestamp).toLocaleTimeString('vi-VN', {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
 
-          map.set(threadId, {
-            ...(existing || {}),
-            threadId,
-            name: existing?.name || log.fromName || threadId,
-            avatar: existing?.avatar || log.avatar,
-            type: existing?.type || log.type || 'User',
-            lastMessage: preview || 'Tin nhắn mới',
-            lastTime: timeStr,
-            lastTimestamp: logTime,
-          } as Conversation)
-        }
+        map.set(threadId, {
+          ...(existing || {}),
+          threadId,
+          name: existing?.name || log.fromName || threadId,
+          avatar: existing?.avatar || log.avatar,
+          type: existing?.type || log.type || 'User',
+          lastMessage: preview || 'Tin nhắn mới',
+          lastTime: timeStr,
+          lastTimestamp: logTime,
+        } as Conversation)
+
+        updatedThreads.add(threadId)
       })
 
       const list = Array.from(map.values())
+      // Sort by lastTimestamp descending (newest first)
       list.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
       return list
     })
