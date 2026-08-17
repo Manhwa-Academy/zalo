@@ -720,7 +720,7 @@ export default function ZaloChatView({
 
   // Sticker & File Attachment States
   const [showStickerPicker, setShowStickerPicker] = useState(false)
-  const [stickerTab, setStickerTab] = useState<'stickers' | 'emojis'>('stickers')
+  const [stickerTab, setStickerTab] = useState<'giphy' | 'bilibili' | 'emojis'>('giphy')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
@@ -734,15 +734,52 @@ export default function ZaloChatView({
   const [giphyLoading, setGiphyLoading] = useState(false)
   const giphySearchTimerRef = useRef<any>(null)
 
+  // Bilibili sticker state
+  const [bilibiliStickers, setBilibiliStickers] = useState<any[]>([])
+  const [bilibiliLoading, setBilibiliLoading] = useState(false)
+
   // Fetch trending Giphy stickers on first open
   useEffect(() => {
-    if (showStickerPicker && stickerTab === 'stickers' && giphyStickers.length === 0 && !giphySearch) {
+    if (showStickerPicker && stickerTab === 'giphy' && giphyStickers.length === 0 && !giphySearch) {
       setGiphyLoading(true)
       fetch(`https://api.giphy.com/v1/stickers/trending?api_key=${GIPHY_API_KEY}&limit=30&rating=g`)
         .then((r) => r.json())
         .then((data) => setGiphyStickers(data.data || []))
         .catch(() => {})
         .finally(() => setGiphyLoading(false))
+    }
+  }, [showStickerPicker, stickerTab])
+
+  // Fetch Bilibili stickers on first open
+  useEffect(() => {
+    if (showStickerPicker && stickerTab === 'bilibili' && bilibiliStickers.length === 0) {
+      setBilibiliLoading(true)
+      // Package IDs: 1-15, 16-20, 22, 24, 25, 100, 200
+      const packageIds = '1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19,20,22,24,25,100,200'
+      
+      fetch(`https://api.bilibili.com/x/emote/package?business=reply&ids=${packageIds}`)
+        .then((r) => r.json())
+        .then((data) => {
+          // Bilibili API returns: { code: 0, data: { packages: [...] } }
+          console.log('📺 [Bilibili] API response:', data)
+          if (data.code === 0 && data.data && data.data.packages) {
+            // Flatten all emotes from all packages
+            const allEmotes: any[] = []
+            data.data.packages.forEach((pkg: any) => {
+              if (pkg.emote && Array.isArray(pkg.emote)) {
+                allEmotes.push(...pkg.emote)
+              }
+            })
+            console.log(`📺 [Bilibili] Loaded ${allEmotes.length} stickers from ${data.data.packages.length} packages`)
+            setBilibiliStickers(allEmotes)
+          } else {
+            console.error('❌ [Bilibili] Invalid API response:', data)
+          }
+        })
+        .catch((err) => {
+          console.error('❌ [Bilibili] Failed to fetch stickers:', err)
+        })
+        .finally(() => setBilibiliLoading(false))
     }
   }, [showStickerPicker, stickerTab])
 
@@ -944,6 +981,94 @@ export default function ZaloChatView({
       }
     } catch (err: any) {
       console.error('Failed to send Giphy sticker:', err)
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  // Send a Bilibili sticker as an image file attachment
+  const handleSendBilibiliSticker = async (emote: any) => {
+    if (!activeThreadId) return
+    setIsSending(true)
+    setShowStickerPicker(false)
+
+    const activeConv = conversations.find((c) => c.threadId === activeThreadId)
+    const threadType = activeConv?.type === 'Group' ? 1 : 0
+
+    const stickerUrl = emote.url || ''
+    if (!stickerUrl) {
+      alert('Không tìm thấy URL sticker Bilibili')
+      setIsSending(false)
+      return
+    }
+
+    const fileName = `bilibili_${emote.id || Date.now()}.png`
+
+    // 1. Add local optimistic message
+    const localContent = JSON.stringify({
+      type: 'image',
+      name: emote.text || fileName || 'Bilibili Sticker',
+      caption: '',
+      url: stickerUrl,
+    })
+
+    const tempSentMsg: Message = {
+      id: Date.now(),
+      threadId: activeThreadId,
+      from: 'Self',
+      fromName: 'Bạn (Chính mình)',
+      content: localContent,
+      timestamp: new Date().toISOString(),
+      type: activeConv?.type || 'User',
+      isSelf: true,
+    }
+
+    setHistoryMessages((prev) => ({
+      ...prev,
+      [activeThreadId]: [...(prev[activeThreadId] || []), tempSentMsg],
+    }))
+
+    // Bump conversation to top
+    setConversations((prev) => {
+      const map = new Map<string, Conversation>()
+      prev.forEach((c) => map.set(c.threadId, c))
+      const existing = map.get(activeThreadId)
+      if (existing) {
+        map.set(activeThreadId, {
+          ...existing,
+          lastMessage: 'Bạn: [Bilibili Sticker]',
+          lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          lastTimestamp: Date.now(),
+        })
+      }
+      const list = Array.from(map.values())
+      list.sort((a, b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0))
+      return list
+    })
+
+    // 2. Download and send via API
+    try {
+      const response = await fetch(stickerUrl)
+      const blob = await response.blob()
+      const file = new File([blob], fileName, { type: blob.type || 'image/png' })
+
+      const formData = new FormData()
+      formData.append('threadId', activeThreadId)
+      formData.append('threadType', String(threadType))
+      formData.append('message', '')
+      formData.append('file', file)
+      formData.append('fileName', fileName)
+
+      const res = await fetch('/api/zalo/messages', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!data.success) {
+        alert(data.error || 'Lỗi gửi sticker Bilibili')
+      }
+    } catch (err: any) {
+      console.error('Failed to send Bilibili sticker:', err)
     } finally {
       setIsSending(false)
     }
@@ -3248,12 +3373,21 @@ export default function ZaloChatView({
                     <div className="flex border-b border-white/10 bg-dark-300/80 p-1">
                       <button
                         type="button"
-                        onClick={() => setStickerTab('stickers')}
+                        onClick={() => setStickerTab('giphy')}
                         className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
-                          stickerTab === 'stickers' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
+                          stickerTab === 'giphy' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        🖼️ Sticker GIF
+                        🎬 Giphy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStickerTab('bilibili')}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                          stickerTab === 'bilibili' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        📺 Bilibili
                       </button>
                       <button
                         type="button"
@@ -3262,13 +3396,13 @@ export default function ZaloChatView({
                           stickerTab === 'emojis' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        😃 Biểu cảm Emoji
+                        😃 Emojis
                       </button>
                     </div>
 
                     {/* Content Panel */}
                     <div className="flex flex-col max-h-80">
-                      {stickerTab === 'stickers' ? (
+                      {stickerTab === 'giphy' ? (
                         <>
                           {/* Giphy Search Bar */}
                           <div className="p-2 border-b border-white/10">
@@ -3299,29 +3433,61 @@ export default function ZaloChatView({
                                       key={gif.id}
                                       type="button"
                                       onClick={() => handleSendGiphySticker(gif)}
-                                      className="relative rounded-xl overflow-hidden hover:ring-2 hover:ring-primary transition-all group/gif bg-dark-300 aspect-square"
-                                      title={gif.title || 'Sticker GIF'}
+                                      className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-primary hover:scale-105 transition-all cursor-pointer group"
                                     >
                                       <img
                                         src={previewUrl}
-                                        alt={gif.title || 'GIF'}
-                                        className="w-full h-full object-cover group-hover/gif:scale-105 transition-transform"
-                                        loading="lazy"
+                                        alt={gif.title || 'Giphy sticker'}
+                                        className="w-full h-full object-cover"
                                       />
-                                      <div className="absolute inset-0 bg-black/0 group-hover/gif:bg-black/20 transition-colors flex items-end justify-center">
-                                        <span className="text-[9px] text-white/0 group-hover/gif:text-white/80 pb-1 font-medium transition-colors truncate px-1">Gửi</span>
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+                                        <span className="text-[9px] text-white font-bold truncate">{gif.title}</span>
                                       </div>
                                     </button>
                                   )
                                 })}
                               </div>
                             )}
-                            {/* Giphy Attribution */}
-                            <div className="flex items-center justify-center pt-2 pb-1 gap-1.5 opacity-50">
-                              <span className="text-[9px] text-gray-400">Powered by</span>
-                              <img src="https://giphy.com/static/img/giphy_logo_square_social.png" alt="Giphy" className="h-3 rounded" />
-                              <span className="text-[9px] text-gray-400 font-bold">GIPHY</span>
-                            </div>
+                          </div>
+                        </>
+                      ) : stickerTab === 'bilibili' ? (
+                        <>
+                          {/* Bilibili Stickers */}
+                          <div className="p-2 overflow-y-auto flex-1 custom-scrollbar" style={{ maxHeight: '340px' }}>
+                            {bilibiliLoading ? (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                <span className="text-xs text-gray-400 ml-2">Đang tải Bilibili stickers...</span>
+                              </div>
+                            ) : bilibiliStickers.length === 0 ? (
+                              <div className="text-center py-8 text-xs text-gray-400">
+                                Không tải được sticker Bilibili. Vui lòng thử lại!
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-4 gap-1.5">
+                                {bilibiliStickers.map((emote: any) => {
+                                  const stickerUrl = emote.url || ''
+                                  return (
+                                    <button
+                                      key={emote.id}
+                                      type="button"
+                                      onClick={() => handleSendBilibiliSticker(emote)}
+                                      className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-pink-500 hover:scale-105 transition-all cursor-pointer group p-1"
+                                      title={emote.text || emote.id}
+                                    >
+                                      <img
+                                        src={stickerUrl}
+                                        alt={emote.text || 'Bilibili sticker'}
+                                        className="w-full h-full object-contain"
+                                      />
+                                      <div className="absolute inset-0 bg-gradient-to-t from-pink-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+                                        <span className="text-[9px] text-white font-bold truncate">{emote.text}</span>
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
                           </div>
                         </>
                       ) : (

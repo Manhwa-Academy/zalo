@@ -225,19 +225,20 @@ export async function markMessageReplied(userId: string, msgId: string): Promise
 }
 
 /**
- * Mark message as undone/recalled
+ * Delete message when undone/recalled (instead of marking)
  */
-export async function markMessageUndone(userId: string, msgId: string): Promise<void> {
+export async function deleteMessageOnUndo(userId: string, msgId: string): Promise<void> {
   if (!pool) return
 
   try {
     await pool.query(`
-      UPDATE zalo_messages
-      SET is_undo = true
+      DELETE FROM zalo_messages
       WHERE user_id = $1 AND msg_id = $2
     `, [userId, msgId])
+    
+    console.log(`🗑️ [DB] Deleted undone message from database: ${msgId}`)
   } catch (error) {
-    console.error('❌ Error marking message as undone:', error)
+    console.error('❌ Error deleting undone message:', error)
   }
 }
 

@@ -157,6 +157,11 @@ export function markMessageUndone(msgId: string, cliMsgId: string, threadId: str
   // Save to file
   saveStoredMessages()
 
+  // ✅ DELETE from database instead of marking
+  deleteFromDatabaseAsync(mIdStr, cIdStr).catch(err => {
+    console.error('❌ Failed to delete undone message from database:', err)
+  })
+
   if (targetMsg) {
     // Broadcast the updated message
     sseClients.forEach((client) => {
@@ -164,6 +169,33 @@ export function markMessageUndone(msgId: string, cliMsgId: string, threadId: str
         client.controller.enqueue(`data: ${JSON.stringify(targetMsg)}\n\n`)
       } catch (e) {}
     })
+  }
+}
+
+/**
+ * Delete undone message from database (async helper)
+ */
+async function deleteFromDatabaseAsync(msgId: string, cliMsgId: string) {
+  try {
+    const { getCurrentUserId } = await import('./multi-user-zalo')
+    const { deleteMessageOnUndo } = await import('./messages-db')
+    
+    const userId = await getCurrentUserId()
+    if (!userId) {
+      return
+    }
+
+    // Try to delete by msgId first, then cliMsgId
+    if (msgId) {
+      await deleteMessageOnUndo(userId, msgId)
+    } else if (cliMsgId) {
+      await deleteMessageOnUndo(userId, cliMsgId)
+    }
+    
+    console.log('✅ [Undo] Deleted message from database')
+  } catch (error) {
+    console.error('❌ [Undo] Failed to delete from database:', error)
+    throw error
   }
 }
 
