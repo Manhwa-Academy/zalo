@@ -735,8 +735,9 @@ export default function ZaloChatView({
   const giphySearchTimerRef = useRef<any>(null)
 
   // Bilibili sticker state
-  const [bilibiliStickers, setBilibiliStickers] = useState<any[]>([])
+  const [bilibiliPackages, setBilibiliPackages] = useState<any[]>([]) // Store packages separately
   const [bilibiliLoading, setBilibiliLoading] = useState(false)
+  const [bilibiliSubTab, setBilibiliSubTab] = useState<string>('all') // 'all' or package id
 
   // Fetch trending Giphy stickers on first open
   useEffect(() => {
@@ -752,7 +753,7 @@ export default function ZaloChatView({
 
   // Fetch Bilibili stickers on first open
   useEffect(() => {
-    if (showStickerPicker && stickerTab === 'bilibili' && bilibiliStickers.length === 0) {
+    if (showStickerPicker && stickerTab === 'bilibili' && bilibiliPackages.length === 0) {
       setBilibiliLoading(true)
       // Fetch through proxy API to avoid CORS issues
       fetch('/api/bilibili/emotes')
@@ -761,15 +762,10 @@ export default function ZaloChatView({
           // Bilibili API returns: { code: 0, data: { packages: [...] } }
           console.log('📺 [Bilibili] API response:', data)
           if (data.code === 0 && data.data && data.data.packages) {
-            // Flatten all emotes from all packages
-            const allEmotes: any[] = []
-            data.data.packages.forEach((pkg: any) => {
-              if (pkg.emote && Array.isArray(pkg.emote)) {
-                allEmotes.push(...pkg.emote)
-              }
-            })
-            console.log(`📺 [Bilibili] Loaded ${allEmotes.length} stickers from ${data.data.packages.length} packages`)
-            setBilibiliStickers(allEmotes)
+            // Keep packages separate for organized display
+            const packages = data.data.packages.filter((pkg: any) => pkg.emote && pkg.emote.length > 0)
+            console.log(`📺 [Bilibili] Loaded ${packages.length} packages`)
+            setBilibiliPackages(packages)
           } else {
             console.error('❌ [Bilibili] Invalid API response:', data)
           }
@@ -3450,40 +3446,98 @@ export default function ZaloChatView({
                         </>
                       ) : stickerTab === 'bilibili' ? (
                         <>
+                          {/* Bilibili Package Tabs */}
+                          <div className="border-b border-white/10">
+                            <div className="flex overflow-x-auto custom-scrollbar px-2 py-1 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setBilibiliSubTab('all')}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
+                                  bilibiliSubTab === 'all'
+                                    ? 'bg-pink-500 text-white'
+                                    : 'bg-dark-300 text-gray-400 hover:text-white'
+                                }`}
+                              >
+                                🌟 Tất cả
+                              </button>
+                              {bilibiliPackages.map((pkg) => (
+                                <button
+                                  key={pkg.id}
+                                  type="button"
+                                  onClick={() => setBilibiliSubTab(String(pkg.id))}
+                                  className={`px-3 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
+                                    bilibiliSubTab === String(pkg.id)
+                                      ? 'bg-pink-500 text-white'
+                                      : 'bg-dark-300 text-gray-400 hover:text-white'
+                                  }`}
+                                  title={pkg.text}
+                                >
+                                  {pkg.text?.substring(0, 8) || `#${pkg.id}`}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          
                           {/* Bilibili Stickers */}
-                          <div className="p-2 overflow-y-auto flex-1 custom-scrollbar" style={{ maxHeight: '340px' }}>
+                          <div className="p-2 overflow-y-auto flex-1 custom-scrollbar" style={{ maxHeight: '300px' }}>
                             {bilibiliLoading ? (
                               <div className="flex items-center justify-center py-8">
-                                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                <div className="w-6 h-6 border-2 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
                                 <span className="text-xs text-gray-400 ml-2">Đang tải Bilibili stickers...</span>
                               </div>
-                            ) : bilibiliStickers.length === 0 ? (
+                            ) : bilibiliPackages.length === 0 ? (
                               <div className="text-center py-8 text-xs text-gray-400">
                                 Không tải được sticker Bilibili. Vui lòng thử lại!
                               </div>
                             ) : (
                               <div className="grid grid-cols-4 gap-1.5">
-                                {bilibiliStickers.map((emote: any) => {
-                                  const stickerUrl = emote.url || ''
-                                  return (
-                                    <button
-                                      key={emote.id}
-                                      type="button"
-                                      onClick={() => handleSendBilibiliSticker(emote)}
-                                      className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-pink-500 hover:scale-105 transition-all cursor-pointer group p-1"
-                                      title={emote.text || emote.id}
-                                    >
-                                      <img
-                                        src={stickerUrl}
-                                        alt={emote.text || 'Bilibili sticker'}
-                                        className="w-full h-full object-contain"
-                                      />
-                                      <div className="absolute inset-0 bg-gradient-to-t from-pink-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
-                                        <span className="text-[9px] text-white font-bold truncate">{emote.text}</span>
-                                      </div>
-                                    </button>
-                                  )
-                                })}
+                                {(() => {
+                                  // Get stickers based on selected sub-tab
+                                  let stickersToShow: any[] = []
+                                  if (bilibiliSubTab === 'all') {
+                                    // Show all stickers from all packages
+                                    bilibiliPackages.forEach((pkg) => {
+                                      if (pkg.emote && Array.isArray(pkg.emote)) {
+                                        stickersToShow.push(...pkg.emote)
+                                      }
+                                    })
+                                  } else {
+                                    // Show stickers from selected package
+                                    const selectedPkg = bilibiliPackages.find((p) => String(p.id) === bilibiliSubTab)
+                                    if (selectedPkg && selectedPkg.emote) {
+                                      stickersToShow = selectedPkg.emote
+                                    }
+                                  }
+                                  
+                                  return stickersToShow.map((emote: any) => {
+                                    const stickerUrl = emote.url || ''
+                                    // Skip stickers with invalid URLs
+                                    if (!stickerUrl || stickerUrl.includes('undefined')) return null
+                                    
+                                    return (
+                                      <button
+                                        key={emote.id}
+                                        type="button"
+                                        onClick={() => handleSendBilibiliSticker(emote)}
+                                        className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-pink-500 hover:scale-105 transition-all cursor-pointer group p-1"
+                                        title={emote.text || emote.id}
+                                      >
+                                        <img
+                                          src={stickerUrl}
+                                          alt={emote.text || 'Bilibili sticker'}
+                                          className="w-full h-full object-contain"
+                                          onError={(e) => {
+                                            // Hide broken images
+                                            (e.target as HTMLImageElement).style.display = 'none'
+                                          }}
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-pink-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+                                          <span className="text-[9px] text-white font-bold truncate">{emote.text}</span>
+                                        </div>
+                                      </button>
+                                    )
+                                  })
+                                })()}
                               </div>
                             )}
                           </div>
