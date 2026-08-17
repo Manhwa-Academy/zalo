@@ -2220,11 +2220,19 @@ export default function ZaloChatView({
   })
 
   // Sort messages by timestamp (oldest first, newest last)
-  // This ensures messages display in correct chronological order
+  // If timestamps are equal, sort by msgId/cliMsgId for consistent ordering
   activeMessages.sort((a, b) => {
     const tsA = parseTs(a.timestamp)
     const tsB = parseTs(b.timestamp)
-    return tsA - tsB // Ascending order (oldest → newest)
+    
+    if (tsA !== tsB) {
+      return tsA - tsB // Primary sort: timestamp ascending (oldest → newest)
+    }
+    
+    // Secondary sort: msgId/cliMsgId for messages with same timestamp
+    const idA = parseInt(a.msgId || a.cliMsgId || a.id || '0')
+    const idB = parseInt(b.msgId || b.cliMsgId || b.id || '0')
+    return idA - idB // Ascending order (smaller ID = older)
   })
 
   // Filtered conversation list

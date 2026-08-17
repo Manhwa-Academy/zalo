@@ -54,15 +54,19 @@ export function clearStoredMessages() {
 
 export function broadcastMessage(data: any) {
   // Deduplicate incoming messages before storing or broadcasting
+  // Only check by msgId/cliMsgId, NOT by content (to allow duplicate stickers/text)
   const exists = messageQueue.some(
     (m) =>
       (m.msgId && data.msgId && String(m.msgId) === String(data.msgId)) ||
       (m.cliMsgId && data.cliMsgId && String(m.cliMsgId) === String(data.cliMsgId)) ||
-      (m.id && data.id && String(m.id) === String(data.id)) ||
-      (m.content === data.content && String(m.threadId) === String(data.threadId) && Math.abs(new Date(m.timestamp).getTime() - new Date(data.timestamp).getTime()) < 5000)
+      (m.id && data.id && String(m.id) === String(data.id))
   )
 
   if (exists) {
+    console.log('🔄 [Listener] Duplicate message detected, skipping:', {
+      msgId: data.msgId,
+      cliMsgId: data.cliMsgId
+    })
     return
   }
 
