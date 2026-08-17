@@ -33,6 +33,8 @@ export interface BotSettings {
   aiPersonality?: string; // NEW: AI personality (friendly, professional, casual, funny, supportive, cute)
   aiMaxLength?: number; // NEW: Max AI response length
   aiTriggerMode?: string; // NEW: 'always' | 'questions' | 'smart' | 'manual'
+  geminiApiKey?: string; // NEW: User's personal Gemini API key (optional)
+  geminiModel?: string; // NEW: User's preferred Gemini model
   settings: any;
   updatedAt: Date;
 }
@@ -263,6 +265,24 @@ export class UserManager {
       // Parse settings from JSONB if exists
       const parsedSettings = row.settings || {};
       
+      // Load Gemini settings from user_settings table
+      let geminiApiKey = ''
+      let geminiModel = 'gemini-3.1-flash-lite'
+      
+      try {
+        const userSettingsResult = await pool.query(
+          'SELECT gemini_api_key, gemini_model FROM user_settings WHERE user_id = $1',
+          [userId]
+        )
+        
+        if (userSettingsResult.rows.length > 0) {
+          geminiApiKey = userSettingsResult.rows[0].gemini_api_key || ''
+          geminiModel = userSettingsResult.rows[0].gemini_model || 'gemini-3.1-flash-lite'
+        }
+      } catch (geminiError) {
+        console.warn('⚠️ [UserManager] Failed to load Gemini settings, using defaults:', geminiError)
+      }
+      
       return {
         id: row.id,
         userId: row.user_id,
@@ -278,6 +298,8 @@ export class UserManager {
         aiPersonality: parsedSettings.aiPersonality || 'friendly',
         aiMaxLength: parsedSettings.aiMaxLength || 200,
         aiTriggerMode: parsedSettings.aiTriggerMode || 'smart',
+        geminiApiKey, // User's personal API key from user_settings
+        geminiModel, // User's preferred model from user_settings
         settings: row.settings,
         updatedAt: row.updated_at,
       };

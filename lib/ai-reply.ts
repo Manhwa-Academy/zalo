@@ -18,6 +18,8 @@ interface AIReplyOptions {
   personality?: string
   maxLength?: number
   presetMessages?: string[] // Preset messages to learn style from
+  apiKey?: string // User's personal Gemini API key (optional)
+  model?: string // User's preferred Gemini model (optional)
 }
 
 interface AIReplyResult {
@@ -39,13 +41,16 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
     personality = 'friendly',
     maxLength = 200,
     presetMessages = [],
+    apiKey: userApiKey,
+    model: userModel = 'gemini-3.1-flash-lite',
   } = options
 
-  const apiKey = process.env.GEMINI_API_KEY
+  // Use user's API key if provided, otherwise fallback to system key
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY
   
   if (!apiKey) {
     return {
-      reply: 'Xin lỗi, AI Reply chưa được cấu hình. Vui lòng thêm GEMINI_API_KEY vào .env',
+      reply: 'Xin lỗi, AI Reply chưa được cấu hình. Vui lòng thêm GEMINI_API_KEY vào .env hoặc nhập API key riêng trong Cài đặt.',
       error: 'GEMINI_API_KEY not configured',
       model: 'none',
     }
@@ -55,8 +60,10 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
     // Initialize Gemini AI with SDK (supports Auth Key AQ. format)
     const genAI = new GoogleGenerativeAI(apiKey)
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-3.1-flash-lite' // Gemini 3.1 Flash Lite - available in v1beta
+      model: userModel // Use user's preferred model or default
     })
+
+    console.log(`🔑 [AI Reply] Using ${userApiKey ? 'USER' : 'SYSTEM'} API key with model: ${userModel}`)
 
     // Build system prompt with personality
     const systemPrompt = buildSystemPrompt(personality, userContext, maxLength, presetMessages)
@@ -94,11 +101,11 @@ Trả lời (${maxLength} ký tự):`
     // Calculate approximate tokens used
     const tokensUsed = Math.ceil((fullPrompt.length + cleanedReply.length) / 4)
 
-    console.log(`🤖 [AI Reply] Generated reply for "${message.slice(0, 30)}..." (${tokensUsed} tokens)`)
+    console.log(`🤖 [AI Reply] Generated reply for "${message.slice(0, 30)}..." (${tokensUsed} tokens, model: ${userModel})`)
 
     return {
       reply: cleanedReply,
-      model: 'gemini-3.1-flash-lite',
+      model: userModel,
       tokensUsed,
     }
   } catch (error: any) {
@@ -107,7 +114,7 @@ Trả lời (${maxLength} ký tự):`
     return {
       reply: 'Xin lỗi, tôi không thể trả lời lúc này. Vui lòng thử lại sau! 🙏',
       error: error.message,
-      model: 'gemini-3.1-flash-lite',
+      model: userModel,
     }
   }
 }
@@ -288,16 +295,54 @@ export function shouldUseAIReply(message: string): boolean {
   
   // Use AI for questions (bao gồm các từ hỏi thường dùng)
   const questionWords = [
-    '?', 'sao', 'tại sao', 'ts', 'vì sao', 'v sao',
-    'như thế nào', 'ntn', 'thế nào', 'tn',
-    'khi nào', 'kn', 'bao giờ', 'bg',
-    'ở đâu', 'đâu', 'chỗ nào',
-    'ai', 'người nào',
-    'bao nhiêu', 'bn', 'giá', 'cost',
-    'có phải', 'có phải không', 'phải không', 'pk',
-    'được không', 'đk', 'ok không', 'okk',
-    'có thể', 'ct', 'có được không',
-    'thế', 'vậy', 'hả', 'hả', 'à', 'ư', 'hử'
+    // Dấu câu hỏi
+    '?',
+    
+    // Tại sao / Vì sao
+    'sao', 'tại sao', 'ts', 'vì sao', 'v sao', 'tai sao', 'vi sao',
+    
+    // Như thế nào / Thế nào
+    'như thế nào', 'ntn', 'thế nào', 'tn', 'nào', 'the nao', 'ra sao',
+    
+    // Khi nào / Bao giờ
+    'khi nào', 'kn', 'bao giờ', 'bg', 'bao h', 'bh', 'khi nao', 'bao gio',
+    'lúc nào', 'ln', 'luc nao',
+    
+    // Ở đâu / Đâu
+    'ở đâu', 'đâu', 'chỗ nào', 'o dau', 'dau', 'where',
+    
+    // Ai / Người nào
+    'ai', 'người nào', 'who', 'ai vậy', 'ai đó', 'nguoi nao',
+    
+    // Bao nhiêu / Giá
+    'bao nhiêu', 'bn', 'bao nhiu', 'giá', 'gia', 'bao nhieu', 
+    'cost', 'price', 'bao lâu', 'bl',
+    
+    // Gì / Cái gì
+    'gì', 'gi', 'j', 'cái gì', 'cai gi', 'what', 'cái j', 'cai j',
+    'gì vậy', 'gi vậy', 'j vậy', 'gì thế', 'j z',
+    
+    // Có phải / Phải không
+    'có phải', 'có phải không', 'phải không', 'pk', 'có phải k',
+    'co phai', 'phai khong', 'phải k', 'có phải ko',
+    
+    // Được không / OK không
+    'được không', 'đk', 'duoc khong', 'ok không', 'okk', 'ok ko',
+    'được k', 'duoc k', 'đc không', 'dc khong', 'dc k',
+    
+    // Có thể / Có được
+    'có thể', 'ct', 'co the', 'có được không', 'có được k',
+    'có thể không', 'can', 'có thể ko',
+    
+    // Từ nghi vấn khác
+    'thế', 'vậy', 'z', 'the', 'vay', 'sao vậy', 'sao z',
+    'hả', 'hả', 'à', 'ư', 'hử', 'ha', 'u', 'huh',
+    'thật không', 'that khong', 'thật ko', 'that ko',
+    'có thật không', 'co that khong', 'có thật k',
+    
+    // Lý do
+    'tại vì', 'tai vi', 'bởi vì', 'boi vi', 'lý do', 'ly do',
+    'nguyên nhân', 'nguyen nhan', 'why', 'because',
   ]
   if (questionWords.some(word => msg.includes(word))) {
     return true
@@ -309,43 +354,88 @@ export function shouldUseAIReply(message: string): boolean {
   // Use AI for specific keywords (bao gồm viết tắt và từ ngữ thông dụng)
   const aiKeywords = [
     // Yêu cầu giúp đỡ
-    'giúp', 'help', 'hộ', 'giúp với', 'giúp đỡ',
-    'giải thích', 'gt', 'explain',
-    'hướng dẫn', 'hd', 'chỉ', 'chỉ giúp',
-    'làm sao', 'ls', 'làm thế nào', 'ltn',
+    'giúp', 'giup', 'help', 'hộ', 'ho', 'giúp với', 'giup voi', 'giúp đỡ', 'giup do',
+    'giải thích', 'gt', 'giai thich', 'explain', 'giải đáp', 'giai dap',
+    'hướng dẫn', 'hd', 'huong dan', 'chỉ', 'chi', 'chỉ giúp', 'guide',
+    'làm sao', 'ls', 'lam sao', 'làm thế nào', 'ltn', 'lam the nao',
+    'giúp tôi', 'giup toi', 'giúp mình', 'giup minh', 'help me',
     
     // Thông tin & chi tiết
-    'tại sao', 'ts', 'vì sao', 'vsao',
-    'chi tiết', 'ct', 'detail',
-    'thông tin', 'tt', 'info', 'thông tin gì',
-    'cho biết', 'cb', 'cho tôi biết',
-    'xem', 'check', 'kiểm tra', 'kt',
+    'tại sao', 'ts', 'tai sao', 'vì sao', 'vsao', 'vi sao',
+    'chi tiết', 'ct', 'chi tiet', 'detail', 'details',
+    'thông tin', 'tt', 'thong tin', 'info', 'information', 'thông tin gì', 'tt gi',
+    'cho biết', 'cb', 'cho biet', 'cho tôi biết', 'cho toi biet',
+    'xem', 'check', 'kiểm tra', 'kt', 'kiem tra', 'view', 'see',
+    'tìm hiểu', 'tim hieu', 'research', 'tìm', 'tim', 'search',
     
     // Yêu cầu & hành động
-    'cần', 'muốn', 'phải làm', 'cần gì',
-    'cho tôi', 'gửi', 'send',
-    'có', 'có không', 'ck',
-    'được', 'được không', 'đk',
+    'cần', 'can', 'muốn', 'muon', 'want', 'need',
+    'phải làm', 'phai lam', 'cần gì', 'can gi', 'cần j', 'cần j',
+    'cho tôi', 'cho toi', 'cho mình', 'cho minh', 'give me',
+    'gửi', 'gui', 'send', 'gửi cho', 'gui cho',
+    'có', 'co', 'have', 'có không', 'co khong', 'ck', 'có k', 'co k',
+    'được', 'duoc', 'đc', 'dc', 'được không', 'duoc khong', 'đk',
+    'lấy', 'lay', 'get', 'take', 'nhận', 'nhan', 'receive',
+    'tải', 'tai', 'download', 'tải về', 'tai ve',
     
-    // Câu hỏi thân mật
-    'em ơi', 'anh ơi', 'chị ơi',
-    'bạn ơi', 'ơi', 'này',
-    'nghe', 'nghe này', 'biết không',
+    // Câu hỏi thân mật & xưng hô
+    'em ơi', 'em oi', 'anh ơi', 'anh oi', 'chị ơi', 'chi oi',
+    'bạn ơi', 'ban oi', 'ơi', 'oi', 'này', 'nay', 'hey',
+    'nghe', 'listen', 'nghe này', 'nghe nay', 'biết không', 'biet khong',
+    'bro', 'sis', 'babe', 'baby', 'dear', 'honey',
+    'idol', 'idol ơi', 'sếp', 'sep', 'boss',
     
     // Câu cảm thán cần phản hồi
-    'ối', 'ôi', 'trời', 'giời',
-    'wow', 'omg', 'wtf', 'lol',
-    'haha', 'hihi', 'huhu', 'hehe',
+    'ối', 'oi', 'ôi', 'oh', 'trời', 'troi', 'giời', 'gioi', 'trời ơi',
+    'wow', 'omg', 'wtf', 'lol', 'lmao', 'rofl',
+    'haha', 'hihi', 'huhu', 'hehe', 'keke', 'hehe',
+    'ôi dồi ôi', 'oi doi oi', 'trời đất', 'troi dat',
+    'my god', 'oh my', 'jesus', 'damn',
     
-    // Các từ thể hiện sự quan tâm
-    'quan tâm', 'care', 'lo lắng', 'll',
-    'nghĩ', 'think', 'opinion',
-    'cảm thấy', 'feel', 'feeling',
+    // Các từ thể hiện sự quan tâm & cảm xúc
+    'quan tâm', 'quan tam', 'care', 'caring',
+    'lo lắng', 'lo lang', 'll', 'worry', 'worried',
+    'nghĩ', 'nghi', 'think', 'thinking', 'opinion',
+    'cảm thấy', 'cam thay', 'feel', 'feeling',
+    'thích', 'thich', 'like', 'love', 'yêu', 'yeu',
+    'ghét', 'ghet', 'hate', 'dislike', 'không thích', 'khong thich',
+    'vui', 'happy', 'buồn', 'buon', 'sad',
+    'mừng', 'mung', 'glad', 'excited',
     
     // Phủ định cần làm rõ
-    'không hiểu', 'kh', 'chẳng hiểu',
-    'không biết', 'kb', 'chả biết',
-    'không rõ', 'ko rõ', 'chưa rõ',
+    'không hiểu', 'kh', 'khong hieu', 'chẳng hiểu', 'chang hieu',
+    'không biết', 'kb', 'khong biet', 'chả biết', 'cha biet', 'ko biết',
+    'không rõ', 'ko rõ', 'khong ro', 'chưa rõ', 'chua ro',
+    'không phải', 'khong phai', 'ko phải', 'chẳng phải', 'chang phai',
+    'sai', 'wrong', 'incorrect', 'sai rồi', 'sai roi',
+    
+    // Động từ hành động thường dùng
+    'làm', 'lam', 'do', 'make', 'thực hiện', 'thuc hien',
+    'đi', 'di', 'go', 'đến', 'den', 'come',
+    'về', 've', 'back', 'return', 'quay lại', 'quay lai',
+    'ăn', 'an', 'eat', 'uống', 'uong', 'drink',
+    'ngủ', 'ngu', 'sleep', 'nghỉ', 'nghi', 'rest',
+    'chơi', 'choi', 'play', 'vui', 'fun',
+    
+    // Trạng thái & tình huống
+    'đang', 'dang', 'đang làm', 'dang lam', 'doing',
+    'rồi', 'roi', 'done', 'xong', 'finished',
+    'chưa', 'chua', 'not yet', 'chưa xong', 'chua xong',
+    'sắp', 'sap', 'soon', 'will', 'sắp rồi', 'sap roi',
+    'vừa', 'vua', 'just', 'mới', 'moi', 'new',
+    
+    // Thời gian
+    'bây giờ', 'bay gio', 'now', 'hiện tại', 'hien tai',
+    'lúc này', 'luc nay', 'ngay bây giờ', 'ngay bay gio',
+    'sau', 'later', 'hôm nay', 'hom nay', 'today',
+    'ngày mai', 'ngay mai', 'mai', 'tomorrow',
+    'hôm qua', 'hom qua', 'yesterday', 'qua',
+    
+    // Khẳng định & phủ định
+    'đúng', 'dung', 'right', 'correct', 'yes',
+    'ừ', 'u', 'uh', 'yeah', 'yep', 'yup',
+    'không', 'khong', 'ko', 'no', 'nope',
+    'chắc', 'chac', 'sure', 'chắc chắn', 'chac chan',
   ]
   
   if (aiKeywords.some(keyword => msg.includes(keyword))) {

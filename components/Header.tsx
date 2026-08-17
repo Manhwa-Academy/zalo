@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import GeminiSettings from './GeminiSettings'
 
 interface HeaderProps {
   userInfo: any
@@ -12,6 +13,8 @@ interface AppSettings {
   learningMode: boolean
   autoMarkRead: boolean
   maxReplyLength: number
+  geminiApiKey: string
+  geminiModel: string
   darkMode: boolean
   animations: boolean
   fontSize: string
@@ -32,6 +35,8 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
     learningMode: false,
     autoMarkRead: true,
     maxReplyLength: 500,
+    geminiApiKey: '',
+    geminiModel: 'gemini-3.1-flash-lite',
     darkMode: true,
     animations: true,
     fontSize: 'medium',
@@ -399,6 +404,22 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                       <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                     </label>
                   </div>
+                </div>
+              </div>
+
+              {/* Gemini AI Settings */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>✨</span>
+                  <span>Cấu hình Gemini AI</span>
+                </h3>
+                <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4">
+                  <GeminiSettings
+                    geminiApiKey={settings.geminiApiKey}
+                    geminiModel={settings.geminiModel}
+                    onApiKeyChange={(key) => setSettings({...settings, geminiApiKey: key})}
+                    onModelChange={(model) => setSettings({...settings, geminiModel: model})}
+                  />
                 </div>
               </div>
 

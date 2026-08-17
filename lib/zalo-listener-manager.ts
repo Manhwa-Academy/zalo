@@ -209,6 +209,8 @@ async function getBotSettingsAsync() {
       aiPersonality: 'friendly',
       aiMaxLength: 200,
       aiTriggerMode: 'smart',
+      geminiApiKey: '',
+      geminiModel: 'gemini-3.1-flash-lite',
     }
   }
 }
@@ -279,6 +281,8 @@ async function getReplyText(messageContent?: string, senderName?: string, thread
           personality,
           maxLength: settings.aiMaxLength || 200,
           presetMessages, // AI will learn style from these
+          apiKey: settings.geminiApiKey || undefined, // User's API key (fallback to system key if empty)
+          model: settings.geminiModel || 'gemini-3.1-flash-lite', // User's preferred model
         })
         
         if (!aiResult.error && aiResult.reply) {

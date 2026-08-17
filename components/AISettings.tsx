@@ -48,11 +48,11 @@ export default function AISettings({
         <div className="flex-1">
           <h3 className="text-lg font-bold flex items-center gap-2">
             <span>🤖</span>
-            <span>AI Smart Reply</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">Gemini 2.5 Flash Lite</span>
+            <span>AI Trả Lời Thông Minh</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">Gemini 3.1 Flash Lite</span>
           </h3>
           <p className="text-xs text-gray-400 mt-1">
-            Trả lời thông minh bằng AI - Tự hiểu context & cá nhân hóa
+            Powered by Google Gemini - Hiểu context & cá nhân hóa theo từng user
           </p>
         </div>
         
@@ -105,7 +105,7 @@ export default function AISettings({
             <li>Nhớ 5 tin nhắn gần nhất để hiểu ngữ cảnh</li>
             <li>Cá nhân hóa theo người nhắn tin</li>
           </ul>
-          <p className="pt-2"><strong>💰 Chi phí:</strong> FREE (15 requests/phút với Gemini)</p>
+          <p className="pt-2"><strong>💰 Chi phí:</strong> FREE (150 requests/phút với Gemini 3.1 Flash Lite)</p>
         </div>
       )}
 
