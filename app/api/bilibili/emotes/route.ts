@@ -27,6 +27,12 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json()
+    
+    // Debug: Log first emote from first package
+    if (data.data?.packages?.[0]?.emote?.[0]) {
+      console.log('📺 [Bilibili Proxy] Sample emote:', JSON.stringify(data.data.packages[0].emote[0], null, 2))
+    }
+    
     console.log(`✅ [Bilibili Proxy] Fetched ${data.data?.packages?.length || 0} packages`)
     
     return NextResponse.json(data)

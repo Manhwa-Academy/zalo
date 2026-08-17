@@ -279,6 +279,14 @@ function renderMessageContent(
               const target = e.target as HTMLImageElement
               const parent = target.parentElement
               
+              // Try to load from cached media if original URL fails
+              if (titleText && !cleanImgUrl.startsWith('/api/media/')) {
+                const cachedUrl = `/api/media/${titleText}`
+                console.log(`🔄 Trying cached media: ${cachedUrl}`)
+                target.src = cachedUrl
+                return
+              }
+              
               // CRITICAL FIX: Only show error UI if parent doesn't already have fallback content
               // This prevents duplicate error messages when multiple render cycles occur
               if (parent && !parent.querySelector('.error-fallback-ui')) {
@@ -989,9 +997,11 @@ export default function ZaloChatView({
     const activeConv = conversations.find((c) => c.threadId === activeThreadId)
     const threadType = activeConv?.type === 'Group' ? 1 : 0
 
+    // Validate URL - must be a valid HTTP URL
     const stickerUrl = emote.url || ''
-    if (!stickerUrl) {
-      alert('Không tìm thấy URL sticker Bilibili')
+    if (!stickerUrl || !stickerUrl.startsWith('http')) {
+      console.error('❌ Invalid Bilibili sticker URL:', emote)
+      alert('Sticker không hợp lệ')
       setIsSending(false)
       return
     }
@@ -1042,7 +1052,13 @@ export default function ZaloChatView({
 
     // 2. Download and send via API
     try {
+      console.log('📺 Downloading Bilibili sticker:', stickerUrl)
       const response = await fetch(stickerUrl)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
       const blob = await response.blob()
       const file = new File([blob], fileName, { type: blob.type || 'image/png' })
 
@@ -3509,34 +3525,42 @@ export default function ZaloChatView({
                                     }
                                   }
                                   
-                                  return stickersToShow.map((emote: any) => {
-                                    const stickerUrl = emote.url || ''
-                                    // Skip stickers with invalid URLs
-                                    if (!stickerUrl || stickerUrl.includes('undefined')) return null
-                                    
-                                    return (
-                                      <button
-                                        key={emote.id}
-                                        type="button"
-                                        onClick={() => handleSendBilibiliSticker(emote)}
-                                        className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-pink-500 hover:scale-105 transition-all cursor-pointer group p-1"
-                                        title={emote.text || emote.id}
-                                      >
-                                        <img
-                                          src={stickerUrl}
-                                          alt={emote.text || 'Bilibili sticker'}
-                                          className="w-full h-full object-contain"
-                                          onError={(e) => {
-                                            // Hide broken images
-                                            (e.target as HTMLImageElement).style.display = 'none'
-                                          }}
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-pink-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
-                                          <span className="text-[9px] text-white font-bold truncate">{emote.text}</span>
-                                        </div>
-                                      </button>
-                                    )
-                                  })
+                                  return stickersToShow
+                                    .filter((emote: any) => {
+                                      // Only show stickers with valid HTTP URLs
+                                      const url = emote.url || ''
+                                      return url && url.startsWith('http')
+                                    })
+                                    .map((emote: any) => {
+                                      const stickerUrl = emote.url
+                                      
+                                      return (
+                                        <button
+                                          key={emote.id}
+                                          type="button"
+                                          onClick={() => handleSendBilibiliSticker(emote)}
+                                          className="relative aspect-square rounded-lg overflow-hidden bg-dark-300 border border-white/10 hover:border-pink-500 hover:scale-105 transition-all cursor-pointer group p-1"
+                                          title={emote.text || emote.id}
+                                        >
+                                          <img
+                                            src={stickerUrl}
+                                            alt={emote.text || 'Bilibili sticker'}
+                                            className="w-full h-full object-contain"
+                                            onError={(e) => {
+                                              // Hide broken images
+                                              const target = e.target as HTMLImageElement
+                                              const parent = target.parentElement
+                                              if (parent) {
+                                                parent.style.display = 'none'
+                                              }
+                                            }}
+                                          />
+                                          <div className="absolute inset-0 bg-gradient-to-t from-pink-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1">
+                                            <span className="text-[9px] text-white font-bold truncate">{emote.text}</span>
+                                          </div>
+                                        </button>
+                                      )
+                                    })
                                 })()}
                               </div>
                             )}

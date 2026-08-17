@@ -658,6 +658,18 @@ export function attachListenerToApi(zaloApi: any) {
           giphyId = imgName.replace('giphy_', '').replace(/\.(gif|png|jpe?g|webp)$/i, '')
         }
         
+        // 🆕 Download and cache media to prevent URL expiration
+        if (imgUrl && imgName) {
+          import('./download-and-cache-media').then(({ downloadAndCacheMedia }) => {
+            getCurrentUserId().then(userId => {
+              const mediaType = imgName.endsWith('.gif') ? 'gif' : 'image'
+              downloadAndCacheMedia(imgUrl, imgName, userId, mediaType).catch(err => {
+                console.warn('⚠️ [Listener] Failed to cache media:', err)
+              })
+            })
+          })
+        }
+        
         rawContent = JSON.stringify({
           type: 'image',
           name: imgName,
