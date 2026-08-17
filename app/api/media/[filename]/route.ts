@@ -22,7 +22,13 @@ export async function GET(
       return NextResponse.json({ error: 'File not found' }, { status: 404 })
     }
 
-    return new NextResponse(result.buffer, {
+    // Convert Buffer to ArrayBuffer for NextResponse
+    const arrayBuffer = result.buffer.buffer.slice(
+      result.buffer.byteOffset,
+      result.buffer.byteOffset + result.buffer.byteLength
+    )
+
+    return new NextResponse(arrayBuffer, {
       headers: {
         'Content-Type': result.contentType,
         'Cache-Control': 'public, max-age=31536000', // Cache for 1 year
