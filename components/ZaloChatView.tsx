@@ -2230,8 +2230,8 @@ export default function ZaloChatView({
     }
     
     // Secondary sort: msgId/cliMsgId for messages with same timestamp
-    const idA = parseInt(a.msgId || a.cliMsgId || a.id || '0')
-    const idB = parseInt(b.msgId || b.cliMsgId || b.id || '0')
+    const idA = parseInt(String(a.msgId || a.cliMsgId || a.id || '0'))
+    const idB = parseInt(String(b.msgId || b.cliMsgId || b.id || '0'))
     return idA - idB // Ascending order (smaller ID = older)
   })
 
