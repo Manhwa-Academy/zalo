@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
+import { getCurrentZaloApi, getCurrentUserId } from '@/lib/multi-user-zalo'
 import { getStoredMessagesForThread } from '@/lib/zalo-listener-manager'
+import { getThreadMessages } from '@/lib/messages-db'
 
 export async function GET(request: Request) {
   try {
@@ -13,8 +14,57 @@ export async function GET(request: Request) {
     }
 
     const zaloApi = await getCurrentZaloApi() as any
+    const userId = await getCurrentUserId()
+    
+    // If not logged into Zalo, try to load from database instead
     if (!zaloApi) {
-      return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
+      console.log('⚠️ [History] Not logged into Zalo, loading from database...')
+      
+      if (!userId) {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+      }
+      
+      try {
+        const dbMessages = await getThreadMessages(userId, threadId, 100)
+        console.log(`📦 [History] Loaded ${dbMessages.length} messages from database for thread ${threadId}`)
+        
+        // Transform database messages to match frontend format
+        const formattedMessages = dbMessages.map((msg: any) => ({
+          id: msg.id,
+          msgId: msg.msgId,
+          cliMsgId: msg.cliMsgId,
+          threadId: msg.threadId,
+          from: msg.from || msg.senderId,
+          fromName: msg.fromName || msg.senderName || 'Người dùng',
+          avatar: msg.avatar || '',
+          content: msg.content,
+          timestamp: typeof msg.timestamp === 'number' 
+            ? new Date(msg.timestamp).toISOString() 
+            : msg.timestamp,
+          type: type || 'User',
+          isSelf: msg.isSelf || false,
+          quote: msg.quote
+        }))
+        
+        // Sort by timestamp ascending (oldest first)
+        formattedMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        )
+        
+        return NextResponse.json({
+          success: true,
+          messages: formattedMessages,
+          members: [],
+          memberAvatars: {},
+          source: 'database' // Indicate this came from database, not Zalo API
+        })
+      } catch (error: any) {
+        console.error('❌ [History] Failed to load from database:', error)
+        return NextResponse.json({ 
+          error: 'Failed to load messages from database',
+          details: error.message 
+        }, { status: 500 })
+      }
     }
 
     const memberAvatars: Record<string, { name: string; avatar: string }> = {}
@@ -66,9 +116,36 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Get locally stored persistent messages for this thread
+    // 2. Get locally stored persistent messages for this thread from memory
     const localMsgs = getStoredMessagesForThread(threadId)
     let fetchedMsgs: any[] = []
+    
+    // 2.5. Also load from database if user is authenticated
+    let dbMsgs: any[] = []
+    if (userId) {
+      try {
+        const dbMessages = await getThreadMessages(userId, threadId, 100)
+        dbMsgs = dbMessages.map((msg: any) => ({
+          id: msg.id,
+          msgId: msg.msgId,
+          cliMsgId: msg.cliMsgId,
+          threadId: msg.threadId,
+          from: msg.from || msg.senderId,
+          fromName: msg.fromName || msg.senderName || 'Người dùng',
+          avatar: msg.avatar || '',
+          content: msg.content,
+          timestamp: typeof msg.timestamp === 'number' 
+            ? new Date(msg.timestamp).toISOString() 
+            : msg.timestamp,
+          type: type || 'User',
+          isSelf: msg.isSelf || false,
+          quote: msg.quote
+        }))
+        console.log(`📦 [History] Loaded ${dbMsgs.length} messages from database for thread ${threadId}`)
+      } catch (error: any) {
+        console.error('❌ [History] Failed to load from database:', error)
+      }
+    }
 
     // 3. Fetch API history from Zalo
     if (type === 'Group' && typeof zaloApi.getGroupChatHistory === 'function') {
@@ -350,15 +427,22 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Merge local persistent messages with fetched history & deduplicate
+    // 4. Merge local persistent messages + database messages + fetched history & deduplicate
     const combinedMap = new Map<string | number, any>()
     fetchedMsgs.forEach((m) => combinedMap.set(m.id, m))
+    dbMsgs.forEach((m) => {
+      if (!combinedMap.has(m.id)) {
+        combinedMap.set(m.id, m)
+      }
+    })
     localMsgs.forEach((m) => {
       if (m.from && m.fromName && !memberMap.has(m.from)) {
         memberMap.set(m.from, { id: m.from, name: m.fromName, avatar: m.avatar || '' })
       }
       const key = m.id || `${m.timestamp}_${m.content}`
-      combinedMap.set(key, m)
+      if (!combinedMap.has(key)) {
+        combinedMap.set(key, m)
+      }
     })
 
     const finalMessages = Array.from(combinedMap.values())
@@ -429,6 +513,10 @@ export async function GET(request: Request) {
       memberAvatars: avatarDict,
     })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('❌ [History] Error loading messages:', error)
+    return NextResponse.json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    }, { status: 500 })
   }
 }
