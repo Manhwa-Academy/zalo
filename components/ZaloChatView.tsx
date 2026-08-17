@@ -1085,7 +1085,7 @@ export default function ZaloChatView({
 
   // 🆕 Fetch online status for ALL user conversations (not just active one)
   useEffect(() => {
-    if (!isLoggedIn || conversations.length === 0) return
+    if (!userInfo || conversations.length === 0) return
 
     const userConversations = conversations.filter((c) => c.type === 'User')
     if (userConversations.length === 0) return
@@ -1128,7 +1128,7 @@ export default function ZaloChatView({
     // Refresh every 30 seconds (adjust as needed)
     const interval = setInterval(fetchAllUserStatuses, 30000)
     return () => clearInterval(interval)
-  }, [isLoggedIn, conversations])
+  }, [userInfo, conversations])
 
   const getUserOnlineStatus = (threadId: string) => {
     const lastActiveTs = userLastActiveMap[threadId]
