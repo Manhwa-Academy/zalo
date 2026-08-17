@@ -268,12 +268,17 @@ function renderMessageContent(
             onError={(e) => {
               console.error('❌ Image failed to load:', cleanImgUrl)
               const target = e.target as HTMLImageElement
-              // Hide broken image and show fallback UI
-              target.style.display = 'none'
               const parent = target.parentElement
-              if (parent) {
+              
+              // CRITICAL FIX: Only show error UI if parent doesn't already have fallback content
+              // This prevents duplicate error messages when multiple render cycles occur
+              if (parent && !parent.querySelector('.error-fallback-ui')) {
+                // Hide broken image
+                target.style.display = 'none'
+                
+                // Add error fallback UI (only once)
                 parent.innerHTML = `
-                  <div class="p-3 bg-dark-300/90 border border-red-500/30 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
+                  <div class="error-fallback-ui p-3 bg-dark-300/90 border border-red-500/30 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
                     <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-400/30 flex items-center justify-center text-xl flex-shrink-0">
                       🖼️
                     </div>
@@ -2013,8 +2018,8 @@ export default function ZaloChatView({
       }
 
       // 3. Both are self-sent image messages within 15 seconds -> merge temp local image with Zalo listener/history response
-      const isImgA = existingText.includes('"type":"image"') || existingText.includes('[Hình ảnh]') || existingText.includes('"href"') || existingText.includes('"thumb"')
-      const isImgB = msgText.includes('"type":"image"') || msgText.includes('[Hình ảnh]') || msgText.includes('"href"') || msgText.includes('"thumb"')
+      const isImgA = existingText.includes('"type":"image"') || existingText.includes('[Hình ảnh]') || existingText.includes('"href"') || existingText.includes('"thumb"') || existingText.includes('giphy.com')
+      const isImgB = msgText.includes('"type":"image"') || msgText.includes('[Hình ảnh]') || msgText.includes('"href"') || msgText.includes('"thumb"') || msgText.includes('giphy.com')
       if (isSameSender && existing.isSelf && isImgA && isImgB && (timeDiff < 15000 || t1 === 0 || t2 === 0)) return true
 
       // 4. Both are self-sent file messages within 15 seconds
@@ -2030,7 +2035,22 @@ export default function ZaloChatView({
     } else {
       const existing = activeMessages[dupIdx]
       
-      // Smart merge: Keep the content with better quality
+      // Smart merge: Keep the content with better quality (prioritize Giphy URLs over Zalo CDN)
+      const extractGiphyUrl = (str: any): string | null => {
+        if (typeof str !== 'string') return null
+        try {
+          const parsed = JSON.parse(str)
+          // Check if this is a Giphy URL (from mediaCache/localStorage)
+          if (parsed.url && String(parsed.url).includes('giphy.com')) {
+            return parsed.url
+          }
+          if (parsed.href && String(parsed.href).includes('giphy.com')) {
+            return parsed.href
+          }
+        } catch {}
+        return null
+      }
+      
       const hasRealUrl = (str: any) => {
         if (typeof str !== 'string') return false
         try {
@@ -2041,15 +2061,21 @@ export default function ZaloChatView({
         }
       }
       
+      const existingGiphyUrl = extractGiphyUrl(existing.content)
+      const msgGiphyUrl = extractGiphyUrl(msg.content)
       const existingHasUrl = hasRealUrl(existing.content)
       const msgHasUrl = hasRealUrl(msg.content)
       
-      // Priority: Keep URL if either has it, prefer existing temp message URL (Giphy preview)
+      // Priority 1: Keep Giphy URL (never expires)
       let preferredContent = existing.content
-      if (msgHasUrl && !existingHasUrl) {
-        preferredContent = msg.content
+      if (msgGiphyUrl) {
+        preferredContent = msg.content // New message has Giphy URL
+      } else if (existingGiphyUrl) {
+        preferredContent = existing.content // Keep existing Giphy URL
+      } else if (msgHasUrl && !existingHasUrl) {
+        preferredContent = msg.content // New message has some URL
       } else if (existingHasUrl) {
-        preferredContent = existing.content // Keep existing URL (from temp message)
+        preferredContent = existing.content // Keep existing URL
       } else {
         preferredContent = msg.content || existing.content
       }
