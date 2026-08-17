@@ -142,6 +142,7 @@ function renderMessageContent(
 
     if (parsedObj.type === 'file') {
       const fileName = parsedObj.name || 'Tập tin'
+      const fileUrl = parsedObj.url || ''
       const fileExt = fileName.split('.').pop()?.toLowerCase() || ''
       
       // Determine icon and color based on file type
@@ -169,6 +170,9 @@ function renderMessageContent(
       } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(fileExt)) {
         icon = '📦'
         colorClass = 'amber'
+      } else if (['apk'].includes(fileExt)) {
+        icon = '📱'
+        colorClass = 'green'
       } else if (['js', 'ts', 'py', 'java', 'cpp', 'c', 'html', 'css', 'json', 'xml'].includes(fileExt)) {
         icon = '💻'
         colorClass = 'cyan'
@@ -177,9 +181,25 @@ function renderMessageContent(
         colorClass = 'gray'
       }
       
+      const handleDownload = () => {
+        if (fileUrl && fileUrl.startsWith('http')) {
+          // Open in new tab to download
+          window.open(fileUrl, '_blank')
+        } else if (fileName) {
+          // Try cached version
+          const cachedUrl = `/api/media/${fileName}`
+          window.open(cachedUrl, '_blank')
+        } else {
+          alert('Không thể tải file (URL đã hết hạn)')
+        }
+      }
+      
       return (
-        <div className="p-2.5 bg-dark-300/90 border border-white/15 rounded-xl flex items-center gap-3 max-w-xs shadow-md">
-          <div className={`w-10 h-10 rounded-lg bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center text-xl flex-shrink-0`}>
+        <button
+          onClick={handleDownload}
+          className="p-2.5 bg-dark-300/90 border border-white/15 rounded-xl flex items-center gap-3 max-w-xs shadow-md hover:bg-dark-300 hover:border-primary transition-colors cursor-pointer group"
+        >
+          <div className={`w-10 h-10 rounded-lg bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center text-xl flex-shrink-0 group-hover:scale-110 transition-transform`}>
             {icon}
           </div>
           <div className="flex flex-col truncate flex-1">
@@ -195,7 +215,10 @@ function renderMessageContent(
             {parsedObj.caption && <span className="text-xs text-gray-200 mt-1">{parsedObj.caption}</span>}
             <span className={`text-[10px] text-${colorClass}-400 font-medium mt-0.5`}>[{fileExt.toUpperCase() || 'FILE'}]</span>
           </div>
-        </div>
+          <div className="text-primary text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+            ⬇️
+          </div>
+        </button>
       )
     }
 
@@ -280,8 +303,14 @@ function renderMessageContent(
               const parent = target.parentElement
               
               // Try to load from cached media if original URL fails
-              if (titleText && !cleanImgUrl.startsWith('/api/media/')) {
-                const cachedUrl = `/api/media/${titleText}`
+              // Use 'name' field (filename) instead of 'text' field for cache lookup
+              const fileName = parsedObj.name || ''
+              
+              // Only try cache fallback if URL is NOT already a proxy or cache URL
+              if (fileName && 
+                  !cleanImgUrl.startsWith('/api/media/') && 
+                  !cleanImgUrl.startsWith('/api/bilibili/image')) {
+                const cachedUrl = `/api/media/${encodeURIComponent(fileName)}`
                 console.log(`🔄 Trying cached media: ${cachedUrl}`)
                 target.src = cachedUrl
                 return
@@ -300,8 +329,8 @@ function renderMessageContent(
                       🖼️
                     </div>
                     <div class="flex flex-col truncate flex-1">
-                      <span class="text-xs font-bold text-white truncate">${titleText || 'Hình ảnh'}</span>
-                      <span class="text-[10px] text-red-400 font-medium">[URL đã hết hạn]</span>
+                      <span class="text-xs font-bold text-white truncate">${titleText || fileName || 'Hình ảnh'}</span>
+                      <span class="text-[10px] text-red-400 font-medium">[Không tải được]</span>
                     </div>
                   </div>
                 `
@@ -633,7 +662,6 @@ export default function ZaloChatView({
   })
   const [inputText, setInputText] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [filterTab, setFilterTab] = useState<'all' | 'user' | 'group'>('all')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -719,6 +747,68 @@ export default function ZaloChatView({
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncNotice, setSyncNotice] = useState<string | null>(null)
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({})
+  
+  // Search functionality for conversations (left sidebar)
+  const [conversationSearchQuery, setConversationSearchQuery] = useState('')
+  
+  // Search functionality for messages (in chat)
+  const [messageSearchQuery, setMessageSearchQuery] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
+  const [searchResults, setSearchResults] = useState<number[]>([]) // Array of message indices
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(0)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchMessageIds, setSearchMessageIds] = useState<Set<string>>(new Set()) // Store matched message IDs
+  
+  
+  // Navigate to next/prev search result
+  const goToSearchResult = (direction: 'next' | 'prev') => {
+    if (searchResults.length === 0) {
+      console.log('🔍 [Navigate] ❌ Không có kết quả để điều hướng')
+      return
+    }
+    
+    console.log('🔍 [Navigate] ==================== ĐIỀU HƯỚNG ====================')
+    console.log('🔍 [Navigate] Hướng:', direction)
+    console.log('🔍 [Navigate] Index hiện tại:', currentSearchIndex)
+    console.log('🔍 [Navigate] Tổng số kết quả:', searchResults.length)
+    
+    let newIndex = currentSearchIndex
+    if (direction === 'next') {
+      newIndex = (currentSearchIndex + 1) % searchResults.length
+    } else {
+      newIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length
+    }
+    
+    console.log('🔍 [Navigate] Index mới:', newIndex)
+    console.log('🔍 [Navigate] Message index:', searchResults[newIndex])
+    
+    setCurrentSearchIndex(newIndex)
+    
+    // Scroll to message with better timing
+    setTimeout(() => {
+      const messageIndex = searchResults[newIndex]
+      const messageElement = document.querySelector(`[data-message-index="${messageIndex}"]`)
+      
+      console.log('🔍 [Navigate] Đang tìm element với data-message-index:', messageIndex)
+      
+      if (messageElement) {
+        console.log('🔍 [Navigate] ✅ Đã tìm thấy element, bắt đầu cuộn...')
+        console.log('🔍 [Navigate] Element:', messageElement)
+        messageElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center',
+          inline: 'nearest'
+        })
+      } else {
+        console.log('🔍 [Navigate] ❌ Không tìm thấy element!')
+        console.log('🔍 [Navigate] Tất cả elements có data-message-index:', 
+          Array.from(document.querySelectorAll('[data-message-index]')).map(el => 
+            el.getAttribute('data-message-index')
+          )
+        )
+      }
+    }, 100)
+  }
   const [groupMembers, setGroupMembers] = useState<Record<string, { id: string; name: string; avatar: string }[]>>({})
   const [friendsList, setFriendsList] = useState<{ id: string; name: string; avatar: string }[]>([])
   const [showMentionMenu, setShowMentionMenu] = useState(false)
@@ -771,8 +861,37 @@ export default function ZaloChatView({
           console.log('📺 [Bilibili] API response:', data)
           if (data.code === 0 && data.data && data.data.packages) {
             // Keep packages separate for organized display
-            const packages = data.data.packages.filter((pkg: any) => pkg.emote && pkg.emote.length > 0)
-            console.log(`📺 [Bilibili] Loaded ${packages.length} packages`)
+            // Fix URL prefix if needed (// -> https:)
+            const packages = data.data.packages
+              .map((pkg: any) => {
+                if (!pkg.emote || pkg.emote.length === 0) return null
+                
+                // Filter out text-only emotes (kaomoji without image URLs)
+                const imageEmotes = pkg.emote.filter((e: any) => {
+                  const url = e.url || ''
+                  // Must have URL and it should be an actual image URL (not kaomoji text)
+                  return url.length > 0 && (url.startsWith('http') || url.startsWith('//'))
+                })
+                
+                if (imageEmotes.length === 0) return null
+                
+                return {
+                  ...pkg,
+                  url: pkg.url?.startsWith('//') ? `https:${pkg.url}` : (pkg.url || ''),
+                  emote: imageEmotes.map((e: any) => {
+                    const fixedUrl = e.url?.startsWith('//') ? `https:${e.url}` : (e.url || '')
+                    // Proxy through our API to avoid CORS
+                    const proxiedUrl = `/api/bilibili/image?url=${encodeURIComponent(fixedUrl)}`
+                    return {
+                      ...e,
+                      url: fixedUrl, // Keep original for sending
+                      displayUrl: proxiedUrl, // Use proxy for display
+                    }
+                  })
+                }
+              })
+              .filter(Boolean) // Remove null packages
+            console.log(`📺 [Bilibili] Loaded ${packages.length} packages with ${packages.reduce((sum: number, p: any) => sum + p.emote.length, 0)} stickers`)
             setBilibiliPackages(packages)
           } else {
             console.error('❌ [Bilibili] Invalid API response:', data)
@@ -1009,11 +1128,16 @@ export default function ZaloChatView({
     const fileName = `bilibili_${emote.id || Date.now()}.png`
 
     // 1. Add local optimistic message
+    // Use proxy URL for display so it works immediately
+    const proxyUrl = `/api/bilibili/image?url=${encodeURIComponent(stickerUrl)}`
+    
     const localContent = JSON.stringify({
       type: 'image',
-      name: emote.text || fileName || 'Bilibili Sticker',
+      name: fileName, // Use actual filename for caching, NOT emote.text
+      text: emote.text, // Store text separately for display
       caption: '',
-      url: stickerUrl,
+      url: proxyUrl, // Use proxy URL so it displays immediately
+      originalUrl: stickerUrl, // Keep original for reference
     })
 
     const tempSentMsg: Message = {
@@ -1052,8 +1176,11 @@ export default function ZaloChatView({
 
     // 2. Download and send via API
     try {
-      console.log('📺 Downloading Bilibili sticker:', stickerUrl)
-      const response = await fetch(stickerUrl)
+      // Use proxy URL to download (avoid CORS)
+      const proxyUrl = `/api/bilibili/image?url=${encodeURIComponent(stickerUrl)}`
+      console.log('📺 Downloading Bilibili sticker via proxy:', proxyUrl)
+      
+      const response = await fetch(proxyUrl)
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
@@ -1079,6 +1206,7 @@ export default function ZaloChatView({
       }
     } catch (err: any) {
       console.error('Failed to send Bilibili sticker:', err)
+      alert('Không thể gửi sticker. Vui lòng thử lại!')
     } finally {
       setIsSending(false)
     }
@@ -1247,6 +1375,148 @@ export default function ZaloChatView({
       console.warn('Failed to save deleted messages to localStorage:', e)
     }
   }, [deletedLocallyMsgIds])
+
+  // Search messages using PostgreSQL Full-Text Search
+  useEffect(() => {
+    if (!messageSearchQuery.trim() || !activeThreadId) {
+      setSearchResults([])
+      setSearchMessageIds(new Set())
+      setCurrentSearchIndex(0)
+      return
+    }
+
+    const searchMessages = async () => {
+      setIsSearching(true)
+      console.log('🔍 [Search] ==================== BẮT ĐẦU TÌM KIẾM (FTS) ====================')
+      console.log('🔍 [Search] Từ khóa:', messageSearchQuery)
+      console.log('🔍 [Search] Thread ID:', activeThreadId)
+
+      try {
+        const response = await fetch('/api/zalo/search-messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            threadId: activeThreadId,
+            query: messageSearchQuery,
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error('Search failed')
+        }
+
+        const data = await response.json()
+        console.log('🔍 [Search] Kết quả từ database:', data.count, 'tin nhắn')
+        
+        // Get message IDs from search results
+        const matchedIds = new Set<string>(data.messages.map((m: any) => String(m.msgId || m.id)))
+        setSearchMessageIds(matchedIds)
+        
+        // Now find indices in activeMessages that match these IDs
+        const activeHistory = historyMessages[activeThreadId] || []
+        const activeRealtimeLogs = logs.filter((m) => String(m.threadId) === String(activeThreadId))
+        const rawCombined = [...activeHistory, ...activeRealtimeLogs]
+        
+        // Build activeMessages (same logic as render)
+        const messages: Message[] = []
+        const parseTs = (ts: any) => {
+          if (!ts) return 0
+          if (typeof ts === 'number') return ts > 1e11 ? ts : ts * 1000
+          const parsed = Date.parse(ts)
+          if (!isNaN(parsed)) return parsed
+          if (typeof ts === 'string' && ts.includes(':')) {
+            const parts = ts.split(':')
+            const h = parseInt(parts[0], 10)
+            const m = parseInt(parts[1], 10)
+            if (!isNaN(h) && !isNaN(m)) {
+              const d = new Date()
+              d.setHours(h, m, 0, 0)
+              return d.getTime()
+            }
+          }
+          return 0
+        }
+
+        rawCombined.forEach((msg) => {
+          if (deletedLocallyMsgIds.has(msg.id)) return
+          if (typeof msg.content === 'string') {
+            const trimmed = msg.content.trim()
+            if (trimmed.startsWith('[{') && trimmed.includes('"actionType"') && trimmed.includes('"clientDelMsgId"')) {
+              return
+            }
+          }
+          if (msg.isUndo) return
+
+          const dupIdx = messages.findIndex((existing) => {
+            if (existing.msgId && msg.msgId && String(existing.msgId) === String(msg.msgId)) return true
+            if (existing.cliMsgId && msg.cliMsgId && String(existing.cliMsgId) === String(msg.cliMsgId)) return true
+            if (String(existing.id) === String(msg.id)) return true
+            return false
+          })
+
+          if (dupIdx === -1) {
+            messages.push(msg)
+          }
+        })
+
+        messages.sort((a, b) => {
+          const tsA = parseTs(a.timestamp)
+          const tsB = parseTs(b.timestamp)
+          if (tsA !== tsB) return tsA - tsB
+          const idA = parseInt(String(a.msgId || a.cliMsgId || a.id || '0'))
+          const idB = parseInt(String(b.msgId || b.cliMsgId || b.id || '0'))
+          return idA - idB
+        })
+
+        // Find indices of matched messages
+        const results: number[] = []
+        messages.forEach((msg, index) => {
+          const msgIdStr = String(msg.msgId || msg.id)
+          if (matchedIds.has(msgIdStr)) {
+            results.push(index)
+            console.log(`🔍 [Search] ✅ Tìm thấy kết quả tại index ${index}:`, {
+              msgId: msgIdStr,
+              content: typeof msg.content === 'string' ? msg.content.substring(0, 50) : '[JSON]',
+              fromName: msg.fromName,
+            })
+          }
+        })
+
+        console.log('🔍 [Search] ==================== KẾT QUẢ ====================')
+        console.log('🔍 [Search] Tổng số kết quả:', results.length)
+        console.log('🔍 [Search] Các index:', results)
+        console.log('🔍 [Search] ====================================================')
+
+        setSearchResults(results)
+        setCurrentSearchIndex(results.length > 0 ? 0 : -1)
+
+        // Auto-scroll to first result
+        if (results.length > 0) {
+          setTimeout(() => {
+            const messageElement = document.querySelector(`[data-message-index="${results[0]}"]`)
+            if (messageElement) {
+              console.log('🔍 [Search] ✅ Tự động cuộn đến kết quả đầu tiên')
+              messageElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+                inline: 'nearest',
+              })
+            }
+          }, 100)
+        }
+      } catch (error) {
+        console.error('❌ [Search] Lỗi tìm kiếm:', error)
+        setSearchResults([])
+        setSearchMessageIds(new Set())
+      } finally {
+        setIsSearching(false)
+      }
+    }
+
+    // Debounce search
+    const timeoutId = setTimeout(searchMessages, 300)
+    return () => clearTimeout(timeoutId)
+  }, [messageSearchQuery, activeThreadId, historyMessages, logs, deletedLocallyMsgIds])
 
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
@@ -2384,7 +2654,7 @@ export default function ZaloChatView({
 
   // Filtered conversation list
   const filteredConversations = conversations.filter((c) => {
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || c.threadId.includes(searchQuery)
+    const matchesSearch = c.name.toLowerCase().includes(conversationSearchQuery.toLowerCase()) || c.threadId.includes(conversationSearchQuery)
     if (filterTab === 'user') return matchesSearch && c.type === 'User'
     if (filterTab === 'group') return matchesSearch && c.type === 'Group'
     return matchesSearch
@@ -2451,8 +2721,8 @@ export default function ZaloChatView({
               <input
                 type="text"
                 placeholder="Tìm kiếm trò chuyện..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={conversationSearchQuery}
+                onChange={(e) => setConversationSearchQuery(e.target.value)}
                 className="w-full bg-dark-300 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-primary"
               />
               <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2672,6 +2942,32 @@ export default function ZaloChatView({
 
               {/* Bot Control & Action Buttons for Active Chat */}
               <div className={`flex items-center gap-1 sm:gap-1.5 flex-shrink-0 relative ${showRightInfoDrawer ? 'hidden md:flex' : 'flex'}`}>
+                {/* Search Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSearch(!showSearch)
+                    if (!showSearch) {
+                      // Focus search input when opening
+                      setTimeout(() => {
+                        document.getElementById('message-search-input')?.focus()
+                      }, 100)
+                    } else {
+                      setMessageSearchQuery('')
+                      setSearchResults([])
+                    }
+                  }}
+                  className={`btn text-[10px] sm:text-xs py-1 sm:py-1.5 px-2 sm:px-3 flex items-center gap-0.5 sm:gap-1 rounded-lg sm:rounded-xl border transition-all flex-shrink-0 ${
+                    showSearch
+                      ? 'bg-primary/20 border-primary/40 text-primary'
+                      : 'bg-dark-300 border-white/10 text-gray-400 hover:text-white'
+                  }`}
+                  title="Tìm kiếm tin nhắn"
+                >
+                  <span className="text-sm sm:text-base">🔍</span>
+                  <span className="hidden lg:inline font-medium">Tìm kiếm</span>
+                </button>
+                
                 {activeConv.type === 'Group' && (
                   <button
                     onClick={() => toggleWhitelistGroup(activeConv.threadId)}
@@ -2823,6 +3119,72 @@ export default function ZaloChatView({
               </div>
             </div>
 
+            {/* Search Bar (shown when search is active) */}
+            {showSearch && (
+              <div className="px-3 sm:px-4 py-3 bg-dark-200 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      id="message-search-input"
+                      type="text"
+                      value={messageSearchQuery}
+                      onChange={(e) => setMessageSearchQuery(e.target.value)}
+                      placeholder="Tìm kiếm tin nhắn... (Full-Text Search)"
+                      className="w-full px-4 py-2 pr-10 rounded-xl bg-dark-300 border border-white/10 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                      disabled={isSearching}
+                    />
+                    {isSearching && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                      </div>
+                    )}
+                    {!isSearching && messageSearchQuery && (
+                      <button
+                        onClick={() => {
+                          setMessageSearchQuery('')
+                          setSearchResults([])
+                          setSearchMessageIds(new Set())
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                  {searchResults.length > 0 && !isSearching && (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs text-gray-400">
+                        {currentSearchIndex + 1}/{searchResults.length}
+                      </span>
+                      <button
+                        onClick={() => goToSearchResult('prev')}
+                        className="p-2 rounded-lg bg-dark-300 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10"
+                        title="Kết quả trước"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => goToSearchResult('next')}
+                        className="p-2 rounded-lg bg-dark-300 hover:bg-white/10 text-gray-400 hover:text-white border border-white/10"
+                        title="Kết quả sau"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {messageSearchQuery && !isSearching && searchResults.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-2">Không tìm thấy tin nhắn nào</p>
+                )}
+                {isSearching && (
+                  <p className="text-xs text-primary mt-2 flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                    Đang tìm kiếm...
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Pinned Message Bar */}
             {pinnedMessage && (
               <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between text-xs text-amber-300 animate-slideDown backdrop-blur-sm">
@@ -2913,9 +3275,16 @@ export default function ZaloChatView({
                     <div
                       key={msg.id || idx}
                       data-msg-id={msg.globalMsgId || msg.msgId || msg.id}
+                      data-message-index={idx}
                       className={`flex gap-2.5 items-start ${
                         isMine ? 'flex-row-reverse' : 'flex-row'
-                      } ${isFirstInGroup ? 'mt-3' : 'mt-1'} animate-slideIn group relative z-10`}
+                      } ${isFirstInGroup ? 'mt-3' : 'mt-1'} animate-slideIn group relative z-10 transition-all ${
+                        searchResults.includes(idx) && searchResults[currentSearchIndex] === idx
+                          ? 'ring-4 ring-primary bg-primary/20 rounded-2xl p-3 shadow-lg shadow-primary/50 scale-[1.02]'
+                          : searchResults.includes(idx)
+                          ? 'ring-2 ring-primary/50 bg-primary/5 rounded-2xl p-2'
+                          : ''
+                      }`}
                     >
                       {/* Sender Avatar Container */}
                       <div className="flex-shrink-0 w-8 h-8">
@@ -2955,12 +3324,15 @@ export default function ZaloChatView({
                           <div className="flex items-center gap-2 px-1 mb-1">
                             <span className="text-[11px] text-gray-300 font-semibold">{msg.fromName}</span>
                             <span className="text-[9px] text-gray-400 font-mono">
-                              {msg.timestamp
+                              {msg.timestamp && new Date(msg.timestamp).getTime() > 0
                                 ? new Date(msg.timestamp).toLocaleTimeString('vi-VN', {
                                     hour: '2-digit',
                                     minute: '2-digit',
                                   })
-                                : ''}
+                                : new Date().toLocaleTimeString('vi-VN', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
                             </span>
                             {msg.replied && (
                               <span className="text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold">
@@ -3527,12 +3899,13 @@ export default function ZaloChatView({
                                   
                                   return stickersToShow
                                     .filter((emote: any) => {
-                                      // Only show stickers with valid HTTP URLs
+                                      // Double-check: Only show stickers with valid image URLs
                                       const url = emote.url || ''
-                                      return url && url.startsWith('http')
+                                      return url && (url.startsWith('http://') || url.startsWith('https://'))
                                     })
                                     .map((emote: any) => {
-                                      const stickerUrl = emote.url
+                                      // Use displayUrl for showing (proxied), keep url for sending
+                                      const displayUrl = emote.displayUrl || emote.url
                                       
                                       return (
                                         <button
@@ -3543,7 +3916,7 @@ export default function ZaloChatView({
                                           title={emote.text || emote.id}
                                         >
                                           <img
-                                            src={stickerUrl}
+                                            src={displayUrl}
                                             alt={emote.text || 'Bilibili sticker'}
                                             className="w-full h-full object-contain"
                                             onError={(e) => {

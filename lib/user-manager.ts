@@ -206,6 +206,34 @@ export class UserManager {
   }
 
   /**
+   * Update only userInfo without touching session_data
+   */
+  static async updateZaloUserInfo(
+    userId: string,
+    userInfo: any
+  ): Promise<void> {
+    if (!pool) throw new Error('Database not configured');
+
+    try {
+      const result = await pool.query(
+        `UPDATE zalo_sessions 
+         SET user_info = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND is_active = true`,
+        [userId, JSON.stringify(userInfo)]
+      );
+
+      if (result.rowCount === 0) {
+        console.warn(`⚠️ [UserManager] No active session found to update userInfo for user: ${userId}`);
+      } else {
+        console.log(`✅ [UserManager] Updated userInfo for user: ${userId}`);
+      }
+    } catch (error) {
+      console.error('❌ [UserManager] updateZaloUserInfo failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Xóa Zalo session của user
    */
   static async deleteZaloSession(userId: string): Promise<void> {

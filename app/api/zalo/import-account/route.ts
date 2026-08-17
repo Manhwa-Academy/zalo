@@ -185,8 +185,9 @@ export async function POST(request: Request) {
       _importedAt: new Date().toISOString()
     }
     
-    await setCurrentZaloUserInfo(userInfoWithHash)
+    // IMPORTANT: Save zaloApi FIRST so it's in memory when we save userInfo
     await setCurrentZaloApi(zaloApi)
+    await setCurrentZaloUserInfo(userInfoWithHash)
 
     // Restore bot settings if provided
     if (botSettings) {

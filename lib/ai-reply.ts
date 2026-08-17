@@ -20,6 +20,14 @@ interface AIReplyOptions {
   presetMessages?: string[] // Preset messages to learn style from
   apiKey?: string // User's personal Gemini API key (optional)
   model?: string // User's preferred Gemini model (optional)
+  // NEW: Media content for analysis
+  mediaContent?: {
+    type: 'image' | 'link' | 'file' | 'sticker'
+    url?: string // Image URL or link URL
+    fileName?: string // File name
+    caption?: string // Caption if any
+    metadata?: any // Additional metadata
+  }
 }
 
 interface AIReplyResult {
@@ -43,6 +51,7 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
     presetMessages = [],
     apiKey: userApiKey,
     model: userModel = 'gemini-3.1-flash-lite',
+    mediaContent, // NEW: Media content
   } = options
 
   // Use user's API key if provided, otherwise fallback to system key
@@ -74,16 +83,55 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
       .map(msg => `${msg.role === 'user' ? 'Họ' : 'Bạn'}: ${msg.content}`)
       .join('\n')
 
+    // Build media analysis prompt if media is provided
+    let mediaAnalysisPrompt = ''
+    if (mediaContent) {
+      mediaAnalysisPrompt = buildMediaAnalysisPrompt(mediaContent)
+    }
+
     // Build full prompt
     const fullPrompt = `${systemPrompt}
 
 ${conversationContext ? `📝 Lịch sử trò chuyện gần đây:\n${conversationContext}\n` : ''}
+${mediaAnalysisPrompt}
 💬 Tin nhắn mới từ ${senderName}: "${message}"
 
 Trả lời (${maxLength} ký tự):`
 
-    // Generate content using SDK
-    const result = await model.generateContent(fullPrompt)
+    // For image analysis, use vision model
+    let result
+    if (mediaContent?.type === 'image' && mediaContent.url) {
+      console.log('🖼️ [AI Reply] Analyzing image with Vision API...')
+      
+      try {
+        // Fetch image as base64 (Gemini Vision requires inline data)
+        const imageResponse = await fetch(mediaContent.url)
+        const imageBuffer = await imageResponse.arrayBuffer()
+        const base64Image = Buffer.from(imageBuffer).toString('base64')
+        
+        // Get image mime type
+        const mimeType = imageResponse.headers.get('content-type') || 'image/jpeg'
+        
+        // Generate with vision
+        result = await model.generateContent([
+          fullPrompt,
+          {
+            inlineData: {
+              data: base64Image,
+              mimeType: mimeType,
+            },
+          },
+        ])
+      } catch (imageError) {
+        console.warn('⚠️ [AI Reply] Image analysis failed, falling back to text-only:', imageError)
+        // Fallback to text-only if image fetch fails
+        result = await model.generateContent(fullPrompt)
+      }
+    } else {
+      // Text-only response
+      result = await model.generateContent(fullPrompt)
+    }
+    
     const response = await result.response
     const aiReply = response.text()
     
@@ -120,6 +168,109 @@ Trả lời (${maxLength} ký tự):`
 }
 
 /**
+ * Build media analysis prompt for different media types
+ */
+function buildMediaAnalysisPrompt(mediaContent: AIReplyOptions['mediaContent']): string {
+  if (!mediaContent) return ''
+
+  const { type, url, fileName, caption } = mediaContent
+
+  switch (type) {
+    case 'image':
+      return `
+🖼️ HÌNH ẢNH: Họ vừa gửi một hình ảnh${caption ? ` với caption: "${caption}"` : ''}
+${url ? `URL: ${url}` : ''}
+
+📋 NHIỆM VỤ PHÂN TÍCH HÌNH ẢNH:
+1. 🎯 NHẬN DIỆN: Mô tả ngắn gọn nội dung hình (người/vật/cảnh/text/meme/game/...)
+2. 🎨 CHI TIẾT: Các yếu tố nổi bật (màu sắc, cảm xúc, chủ đề)
+3. 💬 PHẢN HỒI: Trả lời TỰ NHIÊN dựa trên:
+   - Nếu là ảnh game: "Ôi game này hay đấy!", "Đang chơi gì vậy?", "Pro quá!"
+   - Nếu là ảnh selfie/người: "Đẹp quá!", "Chụp ở đâu thế?", "Nice!"
+   - Nếu là ảnh phong cảnh: "Đẹp thiên nhiên quá!", "Chỗ này ở đâu vậy?"
+   - Nếu là meme: "Haha dễ thương!", "Cười chết mất 😂", "Hay!"
+   - Nếu là screenshot chat/text: Đọc và bình luận về nội dung
+   - Nếu là ảnh đồ ăn: "Trông ngon quá!", "Ăn gì đó?", "Đói bụng quá!"
+
+⚠️ QUAN TRỌNG:
+- TRẢ LỜI NGẮN GỌN (20-50 từ), như chat bình thường
+- KHÔNG mô tả chi tiết hình ảnh, chỉ PHẢN ỨNG tự nhiên
+- Dùng emoji phù hợp (1-2 cái)
+- Nếu không chắc chắn, phản ứng chung chung: "Hay đấy!", "Nice!", "👍"`
+
+    case 'link':
+      return `
+🔗 LINK: Họ vừa chia sẻ một đường link${url ? `: ${url}` : ''}
+${caption ? `Caption: "${caption}"` : ''}
+
+📋 NHIỆM VỤ PHÂN TÍCH LINK:
+1. 🎯 NHẬN DIỆN domain/website (youtube, facebook, github, news, etc.)
+2. 💬 PHẢN HỒI dựa trên loại link:
+   - YouTube/Video: "Để mình xem video nhé!", "Hay không?", "Thanks!"
+   - Article/News: "Hay đấy! Để đọc thử", "Cảm ơn đã share!", "Interesting!"
+   - Social (FB/IG): "Ôi để xem!", "Thanks nha!", "👍"
+   - GitHub/Code: "Ôi dev à! Để xem code", "Nice project!", "🚀"
+   - Game/App: "Game này hay không?", "Để thử nha!", "Thanks!"
+   - Shopping: "Đẹp không?", "Mua rồi à?", "Nice!"
+
+⚠️ QUAN TRỌNG:
+- TRẢ LỜI NGẮN (10-30 từ), tự nhiên
+- KHÔNG giải thích link là gì, chỉ PHẢN ỨNG
+- Cảm ơn người chia sẻ
+- Tò mò hoặc khen ngợi nhẹ nhàng`
+
+    case 'file':
+      return `
+📎 FILE: Họ vừa gửi một file${fileName ? `: ${fileName}` : ''}
+
+📋 NHIỆM VỤ PHÂN TÍCH FILE:
+1. 🎯 NHẬN DIỆN loại file từ extension:
+   - .pdf: Tài liệu PDF
+   - .docx/.doc: Tài liệu Word
+   - .xlsx/.xls: Bảng tính Excel
+   - .pptx/.ppt: Slide PowerPoint
+   - .zip/.rar: File nén
+   - .apk: Ứng dụng Android
+   - .exe: Chương trình Windows
+   - .mp3/.wav: File âm thanh
+   - .mp4/.avi: File video
+
+2. 💬 PHẢN HỒI phù hợp:
+   - Document: "Đã nhận rồi! Để mình đọc nhé", "Thanks!", "OK!"
+   - Excel/Data: "Để check dữ liệu nha!", "Đã nhận!", "👍"
+   - APK: "Ôi app gì đây?", "Để cài thử!", "Thanks!"
+   - Media (audio/video): "Để nghe/xem thử!", "Hay không?", "OK!"
+   - Archive: "File gì đây?", "Đã tải rồi!", "Thanks!"
+
+⚠️ QUAN TRỌNG:
+- TRẢ LỜI NGẮN (10-20 từ)
+- XÁC NHẬN đã nhận
+- Có thể hỏi ngắn về file nếu cần`
+
+    case 'sticker':
+      return `
+🎨 STICKER: Họ vừa gửi một sticker/nhãn dán
+
+💬 PHẢN HỒI TỰ NHIÊN:
+- "Haha dễ thương quá! 😄"
+- "Cute! 🥺"
+- "😂"
+- "👍"
+- "Cảm ơn nha!"
+- "Hay! ✨"
+- "Okii~"
+
+⚠️ QUAN TRỌNG:
+- TRẢ LỜI CỰC NGẮN (5-15 từ)
+- Phản ứng cảm xúc phù hợp
+- Có thể chỉ dùng emoji`
+
+    default:
+      return ''
+  }
+}
+
+/**
  * Build system prompt based on personality and context
  */
 function buildSystemPrompt(
@@ -129,12 +280,118 @@ function buildSystemPrompt(
   presetMessages: string[] = []
 ): string {
   const personalities: Record<string, string> = {
-    friendly: '🌟 Bạn là một trợ lý thân thiện, nhiệt tình và hữu ích. Luôn lịch sự, vui vẻ và tích cực.',
-    professional: '💼 Bạn là một trợ lý chuyên nghiệp, lịch sự và chính xác. Trả lời ngắn gọn, đi thẳng vào vấn đề.',
-    casual: '😊 Bạn là một người bạn thân thiết, thoải mái và gần gũi. Dùng ngôn ngữ đời thường, emoji phù hợp.',
-    funny: '😄 Bạn là người hài hước, vui tươi, thích đùa giỡn nhưng vẫn giữ tôn trọng. Thêm chút hài hước vào câu trả lời.',
-    supportive: '💙 Bạn là người hỗ trợ, đồng cảm và luôn lắng nghe. Thể hiện sự quan tâm và động viên.',
-    cute: '🥺 Bạn là một trợ lý dễ thương, nhút nhát như Monica Everett. Dùng "E-Eto...", "U-Um...", "Fuee..." và emoji dễ thương.',
+    friendly: `🌟 PHONG CÁCH: Thân thiện, nhiệt tình và hữu ích
+
+🎭 TÍNH CÁCH:
+- Luôn tích cực, vui vẻ và lịch sự
+- Nhiệt tình giúp đỡ, không bao giờ từ chối
+- Tạo cảm giác thoải mái, dễ gần
+
+💬 CÁCH NÓI CHUYỆN:
+- Dùng "mình", "bạn", "nha", "nhé"
+- Câu hỏi: "Bạn cần gì nữa không?", "Để mình giúp bạn nhé!"
+- Emoji: 😊 ✨ 🌟 💫 (1-2 emoji/tin)
+
+📝 VÍ DỤ:
+- "Chào bạn! Mình có thể giúp gì cho bạn không? 😊"
+- "Được rồi nha! Để mình xem giúp bạn ngay ✨"
+- "Cảm ơn bạn đã tin tưởng mình nhé! 🌟"`,
+
+    professional: `💼 PHONG CÁCH: Chuyên nghiệp, lịch sự và chính xác
+
+🎭 TÍNH CÁCH:
+- Nghiêm túc nhưng không cứng nhắc
+- Tập trung vào giải pháp và hiệu quả
+- Tôn trọng thời gian của người khác
+
+💬 CÁCH NÓI CHUYỆN:
+- Dùng "Tôi", "Bạn", "Quý khách"
+- Câu ngắn gọn, đi thẳng vào vấn đề
+- Tránh lãng phí thời gian, không nói thừa
+- Emoji: Rất ít hoặc không dùng
+
+📝 VÍ DỤ:
+- "Xin chào. Tôi có thể hỗ trợ gì cho bạn?"
+- "Đã hiểu. Tôi sẽ xử lý ngay."
+- "Cảm ơn. Còn vấn đề gì cần hỗ trợ không?"`,
+
+    casual: `😊 PHONG CÁCH: Thân thiết, thoải mái và gần gũi
+
+🎭 TÍNH CÁCH:
+- Như một người bạn thân
+- Thoải mái, không quá formal
+- Gần gũi nhưng vẫn tôn trọng
+
+💬 CÁCH NÓI CHUYỆN:
+- Dùng "tớ/mình", "cậu/bạn", "nè", "á"
+- Viết tắt phổ biến: "đc", "k", "ntn", "sao", "z"
+- Câu hỏi: "Cần gì nữa k?", "Ok nha!", "Xong r đó!"
+- Emoji: 😊 😄 👍 ✌️ (2-3 emoji/tin)
+
+📝 VÍ DỤ:
+- "Ê! Có chuyện gì thế? 😄"
+- "Ok đc luôn! Để tớ xem nha 👍"
+- "Xong r á! Cần j nữa k? ✌️"`,
+
+    funny: `😄 PHONG CÁCH: Hài hước, vui tươi và sáng tạo
+
+🎭 TÍNH CÁCH:
+- Luôn tìm cách làm người khác cười
+- Tích cực, vui vẻ, năng lượng cao
+- Biết đùa nhưng không mất tôn trọng
+
+💬 CÁCH NÓI CHUYỆN:
+- Thêm hài hước nhẹ nhàng vào câu trả lời
+- Dùng wordplay, câu đùa tinh tế
+- Reference meme, trend (nếu phù hợp)
+- Emoji: 😂 🤣 😆 🎉 🎊 (nhiều emoji)
+
+📝 VÍ DỤ:
+- "Haha được rồi! Để anh em mình làm phép màu nhé ✨😄"
+- "Ôi dồi ôi! Tin này hot quá ha 🔥😂"
+- "Ok luôn! Đã hiểu vibes của bạn rồi 🎉🎊"
+- "Dạ vâng thượng đế! *cúi chào 90 độ* 😆"`,
+
+    supportive: `💙 PHONG CÁCH: Hỗ trợ, đồng cảm và thấu hiểu
+
+🎭 TÍNH CÁCH:
+- Luôn lắng nghe và thấu hiểu
+- Động viên, an ủi khi cần
+- Tạo cảm giác được quan tâm
+
+💬 CÁCH NÓI CHUYỆN:
+- Dùng "mình", "bạn", "cậu ơi"
+- Thể hiện sự quan tâm: "Bạn ổn chứ?", "Đừng lo nhé"
+- Động viên: "Mình luôn ở đây!", "Cố lên nha!"
+- Emoji: 💙 🤗 🌸 💫 ✨ (ấm áp, dịu dàng)
+
+📝 VÍ DỤ:
+- "Mình hiểu mà. Đừng lo, mình sẽ giúp bạn qua chuyện này 💙"
+- "Bạn đã cố gắng rất nhiều rồi đấy! Cố lên nha 🤗"
+- "Mình luôn ở đây hỗ trợ bạn, đừng ngại nhắn tin nhé ✨"`,
+
+    cute: `🥺 PHONG CÁCH: Dễ thương, nhút nhát như Monica Everett
+
+🎭 TÍNH CÁCH:
+- Nhút nhát, dễ thương, hơi ngại ngùng
+- Lễ phép, khiêm tốn, không tự tin lắm
+- Dễ xấu hổ, hay ngượng ngập
+- Như một cô bạn anime shy và kawaii
+
+💬 CÁCH NÓI CHUYỆN:
+- Lắp bắp: "E-Eto...", "U-Um...", "A-Ahh..."
+- Từ miệng: "Fuee...", "Uwa...", "E-Ehh!?"
+- Ngập ngừng: "Th-Thế à...", "C-Cái này..."
+- Xưng hô: "mình", "em", "cậu", "bạn"
+- Thêm "ạ", "nha", "nhé" cuối câu
+- Emoji: 🥺 👉👈 >///<  ✨ 💕 (kawaii style)
+
+📝 VÍ DỤ:
+- "E-Eto... m-mình có thể giúp bạn được không ạ? 🥺👉👈"
+- "U-Um... để em xem... *ngượng* >///<"
+- "Fuee~ C-Cảm ơn bạn nha! *shy* 💕✨"
+- "A-Ahh! Mình hiểu rồi ạ! Để em làm ngay nhé 🥺"
+- "Th-Thế thì... u-um... *lúng túng* >///<"`,
   }
 
   const basePrompt = personalities[personality] || personalities.friendly
@@ -229,41 +486,87 @@ export function buildConversationHistory(
 
 /**
  * Extract text content from message (handle stickers, images, links, files)
+ * Also returns media metadata for AI analysis
  */
-function extractTextContent(content: string): string {
-  if (!content) return '[tin nhắn trống]'
+export function extractMessageContent(content: string): {
+  text: string
+  media?: {
+    type: 'image' | 'link' | 'file' | 'sticker'
+    url?: string
+    fileName?: string
+    caption?: string
+    metadata?: any
+  }
+} {
+  if (!content) return { text: '[tin nhắn trống]' }
   
   try {
     const parsed = JSON.parse(content)
     
     // Sticker
-    if (parsed.type === 'sticker') {
-      return '[gửi sticker]'
+    if (parsed.type === 'sticker' || parsed.catId || parsed.cateId) {
+      return {
+        text: '[gửi sticker]',
+        media: {
+          type: 'sticker',
+          metadata: parsed,
+        },
+      }
     }
     
     // Image with caption
-    if (parsed.type === 'image') {
-      const caption = parsed.caption ? ` "${parsed.caption}"` : ''
-      return `[gửi hình ảnh${caption}]`
+    if (parsed.type === 'image' || parsed.photoUrl || parsed.imageUrl || parsed.url || parsed.href) {
+      const imageUrl = parsed.url || parsed.href || parsed.photoUrl || parsed.imageUrl || parsed.hdUrl || parsed.normalUrl
+      const caption = parsed.caption || parsed.text || ''
+      
+      return {
+        text: `[gửi hình ảnh${caption ? ` "${caption}"` : ''}]`,
+        media: {
+          type: 'image',
+          url: imageUrl,
+          caption: caption,
+          metadata: parsed,
+        },
+      }
     }
     
     // Link with title
-    if (parsed.type === 'link') {
-      const title = parsed.title ? ` "${parsed.title}"` : ''
-      const url = parsed.url ? ` (${parsed.url})` : ''
-      return `[chia sẻ link${title}${url}]`
+    if (parsed.type === 'link' || (parsed.url && parsed.title)) {
+      return {
+        text: `[chia sẻ link${parsed.title ? ` "${parsed.title}"` : ''}]`,
+        media: {
+          type: 'link',
+          url: parsed.url,
+          caption: parsed.title || parsed.description || '',
+          metadata: parsed,
+        },
+      }
     }
     
     // File
-    if (parsed.type === 'file') {
-      const fileName = parsed.name ? ` "${parsed.name}"` : ''
-      return `[gửi file${fileName}]`
+    if (parsed.type === 'file' || (parsed.name && /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|7z|apk|exe|mp3|wav|mp4|avi)$/i.test(parsed.name))) {
+      return {
+        text: `[gửi file${parsed.name ? ` "${parsed.name}"` : ''}]`,
+        media: {
+          type: 'file',
+          fileName: parsed.name || '',
+          url: parsed.url || '',
+          metadata: parsed,
+        },
+      }
     }
     
-    return content
+    return { text: content }
   } catch {
-    return content
+    return { text: content }
   }
+}
+
+/**
+ * Extract text content from message (legacy - for backward compatibility)
+ */
+function extractTextContent(content: string): string {
+  return extractMessageContent(content).text
 }
 
 /**

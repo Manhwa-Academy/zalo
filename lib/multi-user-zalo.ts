@@ -179,6 +179,9 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
   // Update vào DB (UPSERT zalo_sessions)
   try {
     const zaloApi = zaloInstances.get(userId);
+    
+    // Try to get credentials from zaloApi if available
+    let credentials: any = null
     if (zaloApi) {
       const ctx = zaloApi.getContext ? zaloApi.getContext() : null;
       if (ctx && ctx.cookie) {
@@ -186,17 +189,24 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
         if (typeof ctx.cookie.toJSON === 'function') {
           cookieData = ctx.cookie.toJSON();
         }
-        const credentials = {
+        credentials = {
           cookie: cookieData,
           imei: ctx.imei,
           userAgent: ctx.userAgent,
           language: ctx.language || 'vi',
         };
-        
-        // UPSERT: Nếu user_id đã có zalo_session → Update, nếu chưa → Insert
-        await UserManager.saveZaloSession(userId, credentials, userInfo);
-        // console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
       }
+    }
+    
+    // Save to DB - even if no credentials, just update userInfo
+    if (credentials) {
+      // Full save with credentials
+      await UserManager.saveZaloSession(userId, credentials, userInfo);
+      // console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
+    } else {
+      // Just update userInfo without overwriting credentials
+      await UserManager.updateZaloUserInfo(userId, userInfo);
+      console.log(`✅ [MultiUser] Updated userInfo only for user: ${userId}`);
     }
   } catch (error) {
     console.error('❌ [MultiUser] Failed to update user info in DB:', error);

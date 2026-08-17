@@ -683,12 +683,23 @@ export function attachListenerToApi(zaloApi: any) {
         rawContent.fileName || 
         rawContent.fileUrl || 
         rawContent.fileSize ||
-        (rawContent.name && /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|py|js|ts|json|csv)$/i.test(rawContent.name))
+        (rawContent.name && /\.(mp4|avi|mov|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|apk|txt|py|js|ts|json|csv)$/i.test(rawContent.name))
       ) {
         // File attachment - preserve file metadata (including videos, documents, archives, code files)
         const fileName = rawContent.fileName || rawContent.name || rawContent.title || 'File'
         const fileUrl = rawContent.fileUrl || rawContent.url || rawContent.href || rawContent.downloadUrl || ''
         const fileSize = rawContent.fileSize || rawContent.size || rawContent.fsize || 0
+        
+        // 🆕 Download and cache file to prevent URL expiration
+        if (fileUrl && fileName) {
+          import('./download-and-cache-media').then(({ downloadAndCacheMedia }) => {
+            getCurrentUserId().then(userId => {
+              downloadAndCacheMedia(fileUrl, fileName, userId, 'file').catch(err => {
+                console.warn('⚠️ [Listener] Failed to cache file:', err)
+              })
+            })
+          })
+        }
         
         rawContent = JSON.stringify({
           type: 'file',
