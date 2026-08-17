@@ -754,10 +754,8 @@ export default function ZaloChatView({
   useEffect(() => {
     if (showStickerPicker && stickerTab === 'bilibili' && bilibiliStickers.length === 0) {
       setBilibiliLoading(true)
-      // Package IDs: 1-15, 16-20, 22, 24, 25, 100, 200
-      const packageIds = '1,2,3,4,5,6,7,8,9,10,11,12,14,15,16,17,18,19,20,22,24,25,100,200'
-      
-      fetch(`https://api.bilibili.com/x/emote/package?business=reply&ids=${packageIds}`)
+      // Fetch through proxy API to avoid CORS issues
+      fetch('/api/bilibili/emotes')
         .then((r) => r.json())
         .then((data) => {
           // Bilibili API returns: { code: 0, data: { packages: [...] } }
