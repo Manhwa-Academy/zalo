@@ -92,18 +92,31 @@ const currentStats = {
   activeChats: new Set<string>(initialLoaded.activeChats),
 }
 
-// Initialize from database on first import
-loadStatsFromDB().then(dbStats => {
-  if (dbStats.totalMessages > 0 || dbStats.repliedMessages > 0) {
-    currentStats.totalMessages = dbStats.totalMessages
-    currentStats.repliedMessages = dbStats.repliedMessages
-    console.log('✅ [Stats] Loaded from database:', dbStats)
+// Flag to track if DB stats have been loaded
+let dbStatsLoaded = false
+
+// Lazy load from database (called on first API request, not on import)
+async function ensureDBStatsLoaded() {
+  if (dbStatsLoaded) return
+  
+  try {
+    const dbStats = await loadStatsFromDB()
+    if (dbStats.totalMessages > 0 || dbStats.repliedMessages > 0) {
+      currentStats.totalMessages = dbStats.totalMessages
+      currentStats.repliedMessages = dbStats.repliedMessages
+      console.log('✅ [Stats] Loaded from database:', dbStats)
+    }
+    dbStatsLoaded = true
+  } catch (err) {
+    console.error('❌ [Stats] Failed to load from database:', err)
+    dbStatsLoaded = true // Mark as loaded to avoid retry loops
   }
-}).catch(err => {
-  console.error('❌ [Stats] Failed to load from database:', err)
-})
+}
 
 export function recordStatMessage(autoReplied: boolean, threadId?: string) {
+  // Ensure stats are loaded before recording
+  ensureDBStatsLoaded().catch(err => console.error('[Stats] Load error:', err))
+  
   currentStats.totalMessages++
   if (threadId) currentStats.activeChats.add(String(threadId))
   if (autoReplied) {
@@ -115,7 +128,10 @@ export function recordStatMessage(autoReplied: boolean, threadId?: string) {
   saveStatsToDB(currentStats.totalMessages, currentStats.repliedMessages)
 }
 
-export function getStatsData() {
+export async function getStatsData() {
+  // Ensure stats are loaded before returning
+  await ensureDBStatsLoaded()
+  
   return {
     totalMessages: currentStats.totalMessages,
     repliedMessages: currentStats.repliedMessages,

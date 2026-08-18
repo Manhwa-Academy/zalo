@@ -1,50 +1,71 @@
-feat: AI Smart Reply + Backup/Restore + Fix Multi-Device Duplication
+feat: Replace all default icons with Lucide React icons
 
-✨ New Features:
-- AI-powered smart reply with Gemini 2.5 Flash Lite
-  - 6 personalities (Friendly, Professional, Casual, Funny, Supportive, Cute)
-  - 4 trigger modes (Smart detection, Questions only, Always, Manual)
-  - Context-aware with message history
-  - 🆕 LEARNS FROM PRESET MESSAGES - AI mimics your speaking style
-  - Vietnamese support, <1s response time
-  - Auto fallback to preset messages
-- Backup & Restore system
-  - Export/Import bot settings and message logs
-  - Smart merge without duplicates
-  - Preview modal with selective restore
-  - Sync between devices
+## Changes Overview
+Replaced 50+ emoji and default SVG icons with professional Lucide React icons across 9 components for a cleaner, more consistent UI.
 
-🐛 Bug Fixes:
-- Fixed multi-device user duplication
-  - Check Zalo userId before creating new user
-  - Auto-merge sessions to existing user
-  - Cleaned 2 duplicate users from database
-- Fixed import errors for deployment
-  - Fixed pool import in media-cache-db.ts
-  - Fixed getUserFromSessionCookie → getCurrentUserId
+## Components Updated
 
-🎓 AI Learning Feature:
-- AI reads your preset messages and learns:
-  - Your speaking style and word choices
-  - Your favorite emojis and emoticons
-  - Your tone (formal, casual, funny, etc.)
-  - Your sentence structure
-- Creates replies that sound like YOU, not a generic AI
-- Zero config needed - automatic when preset messages exist
-- Example: If preset has "Ê~ tao đi ngủ đây 💤"
-  → AI replies "Ê~ sắp ngủ rồi đấy! Mai chat nhé 💤"
+### 1. MessageStatus.tsx
+- Loader2, Check, CheckCheck, X, Eye
+- Better status indicators for messages
 
-📚 Documentation:
-- Added AI Smart Reply guides (EN + VI)
-- Added AI Learn From Preset guide
-- Added Backup/Restore guides (EN + VI)
-- Updated deployment checklist
-- Added quick start guide
+### 2. AddFriendModal.tsx
+- Search, CheckCircle, AlertTriangle, Send, ArrowLeft, XCircle, Loader2
+- Professional add friend UI
 
-🔧 Technical:
-- Added AI settings to database schema
-- Added presetMessages parameter to generateAIReply()
-- AI system prompt includes preset messages as style reference
-- Added GEMINI_API_KEY environment variable
-- Rate limiting: 15 req/min (free tier)
-- All TypeScript errors resolved
+### 3. PrivacySettings.tsx
+- Lock, Keyboard, Eye, Info, Loader2, Check
+- Clean privacy settings interface
+
+### 4. JoinGroupModal.tsx
+- Search, Users, ArrowLeft, CheckCircle, Info, User
+- Improved group join modal
+
+### 5. ReactionPicker.tsx
+- ChevronDown, ChevronUp, Ban
+- Cleaner reaction picker UI
+
+### 6. InviteBoxButton.tsx
+- Mail, Users, Clock, Check, XCircle, RefreshCw
+- Professional inbox interface
+
+### 7. GroupLinkSection.tsx
+- Link2, ChevronDown, CheckCircle, Copy, Share2, Sparkles
+- Better group link management
+
+### 8. PendingMembersSection.tsx
+- UserPlus, CheckCircle, XCircle, RefreshCw
+- Improved member approval UI
+
+### 9. ZaloChatView.tsx (MAJOR)
+- Download, ImageIcon, Film, CopyIcon, RefreshCw, Trash2
+- All UI actions, buttons, and fallbacks updated
+- Removed emoji prefixes from notification messages
+- Dynamic icon components for image/video fallbacks
+- Smooth animations with Tailwind classes
+
+## Technical Details
+- Added icon aliases (ImageIcon, CopyIcon) to avoid naming conflicts
+- Implemented dynamic icon selection for GIF vs image fallbacks
+- Integrated animations (spin, pulse) with Tailwind CSS
+- Removed emoji prefixes from all notification messages for cleaner UX
+- Maintained backward compatibility - no breaking changes
+
+## Benefits
+✅ Consistent design language across all UI elements
+✅ Better accessibility with semantic SVG components
+✅ Easier customization via props (size, color, stroke)
+✅ Improved performance with tree-shaking
+✅ Professional, modern appearance
+✅ Better TypeScript support
+✅ Cleaner code without hardcoded emojis
+
+## Package Added
+- lucide-react: ^0.x.x
+
+## Testing
+- All modals and components render correctly
+- Icons display properly in all states (hover, active, disabled)
+- Animations work smoothly (sync button, loading states)
+- Context menu actions function correctly
+- Media attachment fallbacks display properly

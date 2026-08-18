@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/bilibili/image?url=<encoded_url>
  * Proxy để load hình ảnh Bilibili (tránh CORS)

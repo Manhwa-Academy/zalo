@@ -752,3 +752,197 @@ export function shouldUseAIReply(message: string): boolean {
   
   return false
 }
+
+/**
+ * ========================================
+ * AI PERSONAL ASSISTANT FEATURES
+ * ========================================
+ * These functions enable AI to respond on behalf of the user
+ * when they are mentioned or replied to in group chats
+ */
+
+export interface UserAIProfile {
+  userId: string
+  zaloUserId: string
+  zaloDisplayName: string
+  nicknames: string[]
+  aiReplyMode: 'mention_only' | 'name_detect' | 'smart_auto'
+  contextLength: number
+  rememberContext: boolean
+}
+
+/**
+ * Check if AI should reply for user based on profile settings
+ */
+export async function shouldAIReplyForUser(
+  message: string,
+  senderName: string,
+  senderId: string,
+  userProfile: UserAIProfile,
+  quote?: any
+): Promise<boolean> {
+  
+  // CASE 1: Reply to user's message (highest priority)
+  if (quote && (
+    quote.fromName === userProfile.zaloDisplayName ||
+    quote.from === userProfile.zaloUserId
+  )) {
+    console.log(`✅ [AI Reply] Reply to user's message detected`)
+    return true
+  }
+  
+  // CASE 2: @Mention user (exact match)
+  const mentionPattern = new RegExp(`@${userProfile.zaloDisplayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i')
+  if (mentionPattern.test(message)) {
+    console.log(`✅ [AI Reply] @Mention detected: ${userProfile.zaloDisplayName}`)
+    return true
+  }
+  
+  // CASE 3: Name detection mode - check for name or nicknames in message
+  if (userProfile.aiReplyMode === 'name_detect' || userProfile.aiReplyMode === 'smart_auto') {
+    // Check full name
+    if (message.toLowerCase().includes(userProfile.zaloDisplayName.toLowerCase())) {
+      console.log(`✅ [AI Reply] Name detected in message: ${userProfile.zaloDisplayName}`)
+      return true
+    }
+    
+    // Check nicknames
+    for (const nickname of userProfile.nicknames) {
+      if (nickname && message.toLowerCase().includes(nickname.toLowerCase())) {
+        console.log(`✅ [AI Reply] Nickname detected in message: ${nickname}`)
+        return true
+      }
+    }
+  }
+  
+  // CASE 4: Smart auto mode - use existing AI logic
+  if (userProfile.aiReplyMode === 'smart_auto') {
+    const shouldUse = shouldUseAIReply(message)
+    if (shouldUse) {
+      console.log(`✅ [AI Reply] Smart auto triggered for question/request`)
+      return true
+    }
+  }
+  
+  // Don't reply for mention_only mode if no mention/reply
+  console.log(`⏩ [AI Reply] No trigger matched (mode: ${userProfile.aiReplyMode})`)
+  return false
+}
+
+/**
+ * Build enhanced conversation history with longer context
+ */
+export function buildEnhancedConversationHistory(
+  messageLogs: any[],
+  threadId: string,
+  maxMessages: number = 20
+): Array<{ role: 'user' | 'assistant'; content: string; from?: string; timestamp?: string }> {
+  const threadMessages = messageLogs
+    .filter(m => String(m.threadId) === String(threadId))
+    .slice(0, maxMessages)
+    .reverse() // Oldest first
+
+  return threadMessages.map(m => {
+    const { text, media } = extractMessageContent(m.content)
+    
+    return {
+      role: m.isSelf || m.isSelfMessage ? 'assistant' : 'user',
+      content: text,
+      from: m.fromName || m.senderName || 'Unknown',
+      timestamp: m.timestamp,
+    }
+  })
+}
+
+/**
+ * Generate AI reply on behalf of user
+ */
+export async function generateAIReplyForUser(
+  message: string,
+  senderName: string,
+  userProfile: UserAIProfile,
+  conversationHistory: any[],
+  settings: any,
+  mediaContent?: any
+): Promise<AIReplyResult> {
+  
+  console.log(`🤖 [AI Personal] Generating reply on behalf of: ${userProfile.zaloDisplayName}`)
+  
+  // Build enhanced prompt that includes user identity
+  const personalityPrompt = `
+🎭 QUAN TRỌNG: Bạn đang trả lời TIN NHẮN THAY CHO "${userProfile.zaloDisplayName}"
+
+⚠️ QUY TẮC:
+- Bạn KHÔNG phải là trợ lý AI, bạn ĐANG LÀ ${userProfile.zaloDisplayName}
+- Trả lời như thể CHÍNH ${userProfile.zaloDisplayName} đang nhắn tin
+- Dùng "mình", "tôi", "tớ" để nói về ${userProfile.zaloDisplayName}
+- Phong cách: ${settings.aiPersonality || 'friendly'}
+- KHÔNG tiết lộ là AI, KHÔNG nói "Tôi là AI" hay "Tôi giúp..."
+
+💬 NGƯỜI GỬI TIN: ${senderName}
+${conversationHistory.length > 0 ? `
+📝 LỊCH SỬ TRÒ CHUYỆN (${conversationHistory.length} tin):
+${conversationHistory.map(h => `- ${h.from}: ${h.content}`).join('\n')}
+` : ''}
+
+🎯 TIN NHẮN CẦN TRẢ LỜI: "${message}"
+
+💡 GỢI Ý:
+- Nếu ${senderName} hỏi ${userProfile.zaloDisplayName}: Trả lời như chính ${userProfile.zaloDisplayName}
+- Nếu ${senderName} @mention: Xác nhận "Ủa có gì vậy?"
+- Nếu ${senderName} reply tin: Trả lời tiếp theo맥락
+- Giữ phong cách ${settings.aiPersonality || 'thân thiện'}
+`
+
+  // Use existing generateAIReply with enhanced prompt
+  const result = await generateAIReply({
+    message: personalityPrompt,
+    senderName: senderName,
+    conversationHistory: [],
+    personality: settings.aiPersonality || 'friendly',
+    maxLength: settings.aiMaxLength || 200,
+    presetMessages: settings.presetMessages || [],
+    apiKey: settings.geminiApiKey,
+    model: settings.geminiModel || 'gemini-3.1-flash-lite',
+    mediaContent: mediaContent,
+  })
+  
+  return result
+}
+
+/**
+ * Extract nickname variations from full name
+ * Example: "Hoàng Kiều Phong" → ["Hoàng", "Kiều Phong", "Phong", "HKP"]
+ */
+export function extractNicknameVariations(fullName: string): string[] {
+  if (!fullName) return []
+  
+  const parts = fullName.trim().split(/\s+/)
+  const variations: string[] = []
+  
+  // Add full name
+  variations.push(fullName)
+  
+  // Add first name
+  if (parts.length > 0) {
+    variations.push(parts[0])
+  }
+  
+  // Add last name
+  if (parts.length > 1) {
+    variations.push(parts[parts.length - 1])
+  }
+  
+  // Add combination of middle + last (if 3+ parts)
+  if (parts.length >= 3) {
+    variations.push(parts.slice(1).join(' '))
+  }
+  
+  // Add initials (e.g., "HKP")
+  if (parts.length > 1) {
+    variations.push(parts.map(p => p[0]).join('').toUpperCase())
+  }
+  
+  // Remove duplicates
+  return Array.from(new Set(variations))
+}

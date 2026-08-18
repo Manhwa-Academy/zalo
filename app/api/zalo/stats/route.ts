@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getStatsData, recordStatMessage, resetStatsData } from '@/lib/bot-stats'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
-  return NextResponse.json(getStatsData())
+  const stats = await getStatsData()
+  return NextResponse.json(stats)
 }
 
 export async function POST(request: Request) {
@@ -38,7 +41,7 @@ export async function POST(request: Request) {
       }
     }
     
-    return NextResponse.json({ success: true, stats: getStatsData() })
+    return NextResponse.json({ success: true, stats: await getStatsData() })
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }

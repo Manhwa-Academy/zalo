@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { groupId } = body
+    const { groupId, silent = false } = body // 🆕 Add silent param
 
     if (!groupId) {
       return NextResponse.json({ error: 'Missing groupId' }, { status: 400 })
@@ -17,11 +17,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
     }
 
-    console.log(`🚪 Leaving group ${groupId} on Zalo API...`)
+    console.log(`🚪 Leaving group ${groupId} on Zalo API... (silent: ${silent})`)
 
     let result: any = null
     if (typeof zaloApi.leaveGroup === 'function') {
-      result = await zaloApi.leaveGroup(groupId)
+      result = await zaloApi.leaveGroup(groupId, silent) // 🆕 Pass silent param
     } else if (typeof zaloApi.outGroup === 'function') {
       result = await zaloApi.outGroup(groupId)
     } else if (typeof zaloApi.leaveGroupChat === 'function') {
@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       result = { success: true }
     }
 
+    console.log(`✅ Successfully left group ${groupId}`)
     return NextResponse.json({ success: true, result })
   } catch (error: any) {
     console.error('Leave group API error:', error)

@@ -3,6 +3,8 @@ import { getCurrentZaloApi, getCurrentUserId } from '@/lib/multi-user-zalo'
 import { getStoredMessagesForThread } from '@/lib/zalo-listener-manager'
 import { getThreadMessages } from '@/lib/messages-db'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)

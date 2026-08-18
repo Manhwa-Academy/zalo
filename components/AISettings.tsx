@@ -22,21 +22,111 @@ export default function AISettings({
   onAITriggerModeChange,
 }: AISettingsProps) {
   const [showInfo, setShowInfo] = useState(false)
+  const [showPersonalityDemo, setShowPersonalityDemo] = useState<string | null>(null)
+  const [showTriggerDemo, setShowTriggerDemo] = useState<string | null>(null)
 
   const personalities = [
-    { value: 'friendly', label: '🌟 Thân thiện', desc: 'Nhiệt tình, hữu ích, lịch sự' },
-    { value: 'professional', label: '💼 Chuyên nghiệp', desc: 'Ngắn gọn, chính xác' },
-    { value: 'casual', label: '😊 Thoải mái', desc: 'Gần gũi, đời thường' },
-    { value: 'funny', label: '😄 Hài hước', desc: 'Vui tươi, đùa giỡn' },
-    { value: 'supportive', label: '💙 Hỗ trợ', desc: 'Đồng cảm, động viên' },
-    { value: 'cute', label: '🥺 Dễ thương', desc: 'Nhút nhát, Monica style' },
+    { 
+      value: 'friendly', 
+      label: '🌟 Thân thiện', 
+      desc: 'Nhiệt tình, hữu ích, lịch sự',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'Chào bạn! Mình có thể giúp gì cho bạn không? 😊'
+      }
+    },
+    { 
+      value: 'professional', 
+      label: '💼 Chuyên nghiệp', 
+      desc: 'Ngắn gọn, chính xác',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'Xin chào. Tôi có thể hỗ trợ gì cho bạn?'
+      }
+    },
+    { 
+      value: 'casual', 
+      label: '😊 Thoải mái', 
+      desc: 'Gần gũi, đời thường',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'Ê! Có chuyện gì thế? 😄 Cần gì cứ nói nha!'
+      }
+    },
+    { 
+      value: 'funny', 
+      label: '😄 Hài hước', 
+      desc: 'Vui tươi, đùa giỡn',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'Haha được rồi! Để anh em mình làm phép màu nhé ✨😄'
+      }
+    },
+    { 
+      value: 'supportive', 
+      label: '💙 Hỗ trợ', 
+      desc: 'Đồng cảm, động viên',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'Mình hiểu mà. Đừng lo, mình sẽ giúp bạn qua chuyện này 💙'
+      }
+    },
+    { 
+      value: 'cute', 
+      label: '🥺 Dễ thương', 
+      desc: 'Nhút nhát, Monica style',
+      demo: {
+        user: 'Bạn có thể giúp mình không?',
+        ai: 'E-Eto... m-mình có thể giúp bạn được không ạ? 🥺👉👈'
+      }
+    },
   ]
 
   const triggerModes = [
-    { value: 'smart', label: '🧠 Thông minh', desc: 'Tự động phát hiện câu hỏi & tin >= 3 từ' },
-    { value: 'questions', label: '❓ Chỉ câu hỏi', desc: 'Chỉ reply khi có dấu ?' },
-    { value: 'always', label: '⚡ Luôn luôn', desc: 'Mọi tin nhắn đều dùng AI' },
-    { value: 'manual', label: '✋ Thủ công', desc: 'Chỉ khi bật AI manually' },
+    { 
+      value: 'smart', 
+      label: '🧠 Thông minh', 
+      desc: 'Tự động phát hiện câu hỏi & tin >= 3 từ',
+      detail: 'AI tự động nhận diện:\n• Câu hỏi (có từ: sao, gì, nào, ai...)\n• Tin nhắn dài (>= 3 từ)\n• Yêu cầu giúp đỡ',
+      demo: [
+        { user: 'Bạn có rảnh không?', ai: '✅ AI trả lời', reason: '(câu hỏi)' },
+        { user: 'Giúp mình với', ai: '✅ AI trả lời', reason: '(>= 3 từ)' },
+        { user: 'Ok', ai: '⏩ Dùng preset', reason: '(< 3 từ)' },
+      ]
+    },
+    { 
+      value: 'questions', 
+      label: '❓ Chỉ câu hỏi', 
+      desc: 'Chỉ reply khi có dấu ?',
+      detail: 'AI chỉ trả lời khi tin nhắn có dấu chấm hỏi (?)',
+      demo: [
+        { user: 'Bạn có rảnh không?', ai: '✅ AI trả lời', reason: '(có ?)' },
+        { user: 'Giúp mình với', ai: '⏩ Dùng preset', reason: '(không có ?)' },
+        { user: 'Ok', ai: '⏩ Dùng preset', reason: '(không có ?)' },
+      ]
+    },
+    { 
+      value: 'always', 
+      label: '⚡ Luôn luôn', 
+      desc: 'Mọi tin nhắn đều dùng AI',
+      detail: 'AI trả lời TẤT CẢ tin nhắn, kể cả tin ngắn như "Ok", "Ừ"',
+      demo: [
+        { user: 'Bạn có rảnh không?', ai: '✅ AI trả lời', reason: '' },
+        { user: 'Giúp mình với', ai: '✅ AI trả lời', reason: '' },
+        { user: 'Ok', ai: '✅ AI trả lời', reason: '' },
+      ]
+    },
+    { 
+      value: 'manual', 
+      label: '✋ Thủ công', 
+      desc: 'Chỉ khi bật AI manually',
+      detail: 'AI TẮT - Luôn dùng tin nhắn mặc định/preset',
+      demo: [
+        { user: 'Bạn có rảnh không?', ai: '⏩ Dùng preset', reason: '' },
+        { user: 'Giúp mình với', ai: '⏩ Dùng preset', reason: '' },
+        { user: 'Ok', ai: '⏩ Dùng preset', reason: '' },
+      ]
+    },
   ]
 
   const hasGeminiKey = !!process.env.GEMINI_API_KEY || typeof window !== 'undefined'
@@ -119,19 +209,39 @@ export default function AISettings({
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {personalities.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => onAIPersonalityChange(p.value)}
-                  className={`p-3 rounded-xl text-left border transition-all ${
-                    aiPersonality === p.value
-                      ? 'border-primary bg-primary/20 text-white shadow-lg'
-                      : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
-                  }`}
-                  title={p.desc}
-                >
-                  <p className="text-xs font-semibold">{p.label}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{p.desc}</p>
-                </button>
+                <div key={p.value} className="relative">
+                  <button
+                    onClick={() => onAIPersonalityChange(p.value)}
+                    className={`w-full p-3 rounded-xl text-left border transition-all ${
+                      aiPersonality === p.value
+                        ? 'border-primary bg-primary/20 text-white shadow-lg'
+                        : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">{p.label}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{p.desc}</p>
+                  </button>
+                  <button
+                    onClick={() => setShowPersonalityDemo(showPersonalityDemo === p.value ? null : p.value)}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark-100 text-primary text-xs font-bold flex items-center justify-center hover:bg-primary hover:text-white transition-colors"
+                    title="Xem demo"
+                  >
+                    ?
+                  </button>
+                  {showPersonalityDemo === p.value && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-2 p-3 bg-dark-100 border border-primary rounded-xl shadow-2xl animate-slideIn">
+                      <p className="text-[10px] text-gray-400 mb-2">💬 Demo chat:</p>
+                      <div className="space-y-2">
+                        <div className="bg-dark-300 p-2 rounded-lg">
+                          <p className="text-[10px] text-gray-300">👤 User: {p.demo.user}</p>
+                        </div>
+                        <div className="bg-primary/20 p-2 rounded-lg">
+                          <p className="text-[10px] text-white">🤖 AI: {p.demo.ai}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -143,19 +253,41 @@ export default function AISettings({
             </label>
             <div className="grid grid-cols-2 gap-2">
               {triggerModes.map((mode) => (
-                <button
-                  key={mode.value}
-                  onClick={() => onAITriggerModeChange(mode.value)}
-                  className={`p-3 rounded-xl text-left border transition-all ${
-                    aiTriggerMode === mode.value
-                      ? 'border-primary bg-primary/20 text-white shadow-lg'
-                      : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
-                  }`}
-                  title={mode.desc}
-                >
-                  <p className="text-xs font-semibold">{mode.label}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{mode.desc}</p>
-                </button>
+                <div key={mode.value} className="relative">
+                  <button
+                    onClick={() => onAITriggerModeChange(mode.value)}
+                    className={`w-full p-3 rounded-xl text-left border transition-all ${
+                      aiTriggerMode === mode.value
+                        ? 'border-primary bg-primary/20 text-white shadow-lg'
+                        : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold">{mode.label}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{mode.desc}</p>
+                  </button>
+                  <button
+                    onClick={() => setShowTriggerDemo(showTriggerDemo === mode.value ? null : mode.value)}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark-100 text-primary text-xs font-bold flex items-center justify-center hover:bg-primary hover:text-white transition-colors"
+                    title="Xem demo"
+                  >
+                    ?
+                  </button>
+                  {showTriggerDemo === mode.value && (
+                    <div className="absolute z-10 top-full left-0 right-0 mt-2 p-3 bg-dark-100 border border-primary rounded-xl shadow-2xl animate-slideIn max-w-xs">
+                      <p className="text-[10px] text-gray-400 mb-2 whitespace-pre-line">{mode.detail}</p>
+                      <div className="space-y-1 mt-2">
+                        {mode.demo.map((d, i) => (
+                          <div key={i} className="text-[10px] bg-dark-300 p-2 rounded">
+                            <p className="text-gray-300">👤 {d.user}</p>
+                            <p className={`mt-1 ${d.ai.includes('✅') ? 'text-success' : 'text-gray-400'}`}>
+                              {d.ai} {d.reason && <span className="text-gray-500">{d.reason}</span>}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>

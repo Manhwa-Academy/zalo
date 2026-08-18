@@ -1,4 +1,25 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { 
+  Search, Settings, UserPlus, Link2, RefreshCw, Send, Paperclip, 
+  Smile, Image as ImageIcon, MoreHorizontal, MoreVertical, Reply, Forward, 
+  Trash2, Edit, Copy as CopyIcon, X, ChevronLeft, ChevronRight, Download,
+  Phone, Video, Info, Users, Bell, BellOff, MessageSquare,
+  Menu, LogOut, Check, CheckCheck, Clock, AlertCircle,
+  Eye, EyeOff, Lock, Unlock, Star, Archive, Pin, Filter, Film,
+  Palette, Bot, DoorOpen, ChevronDown, QrCode, UserMinus, UserX
+} from 'lucide-react'
+import AddFriendModal from './AddFriendModal'
+import JoinGroupModal from './JoinGroupModal'
+import ReactionPicker from './ReactionPicker'
+import GroupLinkSection from './GroupLinkSection'
+import PendingMembersSection from './PendingMembersSection'
+import InviteBoxButton from './InviteBoxButton'
+import MessageStatus from './MessageStatus'
+import PrivacySettings from './PrivacySettings'
+import QRCodeModal from './QRCodeModal'
+import FriendManagementModal from './FriendManagementModal'
+import ProfileManagementModal from './ProfileManagementModal'
+import UserInfoModal from './UserInfoModal'
 
 interface Message {
   id: string | number
@@ -25,6 +46,56 @@ interface Message {
     fromName: string
     content: string
   }
+  status?: 'sending' | 'sent' | 'delivered' | 'seen' // 🆕 Message status
+  seenBy?: Array<{ // 🆕 List of users who read (for groups)
+    userId: string
+    userName: string
+    avatar?: string
+    seenAt: number
+  }>
+  reactions?: Array<{ // 🆕 Reactions on this message
+    userId: string
+    userName: string
+    icon: string
+    count?: number
+  }>
+}
+
+// Format timestamp for conversation list: "HH:mm", "Hôm qua", "DD/MM"
+function formatConversationTime(timestamp: string | number): string {
+  if (!timestamp) return ''
+  
+  const msgDate = new Date(timestamp)
+  const now = new Date()
+  
+  // Reset time to start of day for comparison
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const msgStart = new Date(msgDate.getFullYear(), msgDate.getMonth(), msgDate.getDate())
+  
+  const diffMs = todayStart.getTime() - msgStart.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) {
+    // Today: show time "17:07"
+    return msgDate.toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  } else if (diffDays === 1) {
+    // Yesterday: show "Hôm qua"
+    return 'Hôm qua'
+  } else if (diffDays < 7) {
+    // Within a week: show day name "Thứ 2", "Thứ 3"
+    const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+    return days[msgDate.getDay()]
+  } else {
+    // Older: show date "17/08"
+    return msgDate.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit'
+    })
+  }
 }
 
 // Convert raw message content (possibly JSON) into short sidebar preview text
@@ -40,8 +111,20 @@ function getLastMessagePreview(content: any): string {
   }
   
   if (typeof content === 'object' && content !== null) {
+    if (content.type === 'call' || content.callType) {
+      const isVideo = content.callType?.includes('video')
+      const duration = content.duration || 0
+      const icon = isVideo ? '📹' : '📞'
+      const type = isVideo ? 'Video' : 'Thoại'
+      if (duration > 0) {
+        const mins = Math.floor(duration / 60)
+        const secs = duration % 60
+        return `${icon} Cuộc gọi ${type} (${mins > 0 ? mins + 'p ' : ''}${secs}s)`
+      }
+      return `${icon} Cuộc gọi ${type}`
+    }
     if (content.catId || content.cateId || content.type === 'sticker') return '[Nhãn dán]'
-    if (content.type === 'link') return `[🔗 ${content.title || content.url || 'Link'}]`
+    if (content.type === 'link') return `[${content.title || content.url || 'Link'}]`
     if (content.type === 'image' || content.photoUrl || content.imageUrl) return '[Hình ảnh]'
     if (content.type === 'file') return `[Tập tin: ${content.name || 'File'}]`
     if (content.href || content.thumb || content.url) return '[Hình ảnh]'
@@ -54,8 +137,20 @@ function getLastMessagePreview(content: any): string {
   if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
     try {
       const parsed = JSON.parse(trimmed)
+      if (parsed.type === 'call' || parsed.callType) {
+        const isVideo = parsed.callType?.includes('video')
+        const duration = parsed.duration || 0
+        const icon = isVideo ? '📹' : '📞'
+        const type = isVideo ? 'Video' : 'Thoại'
+        if (duration > 0) {
+          const mins = Math.floor(duration / 60)
+          const secs = duration % 60
+          return `${icon} Cuộc gọi ${type} (${mins > 0 ? mins + 'p ' : ''}${secs}s)`
+        }
+        return `${icon} Cuộc gọi ${type}`
+      }
       if (parsed.catId || parsed.cateId || parsed.type === 'sticker' || (parsed.id && !parsed.type)) return '[Nhãn dán]'
-      if (parsed.type === 'link') return `[🔗 ${parsed.title || parsed.url || 'Link'}]`
+      if (parsed.type === 'link') return `[${parsed.title || parsed.url || 'Link'}]`
       if (parsed.type === 'image' || parsed.photoUrl || parsed.imageUrl) return '[Hình ảnh]'
       if (parsed.type === 'file') return `[Tập tin: ${parsed.name || 'File'}]`
       if (parsed.href || parsed.thumb || parsed.url) return '[Hình ảnh]'
@@ -67,12 +162,48 @@ function getLastMessagePreview(content: any): string {
   return str
 }
 
+// Map Zalo reaction codes to emoji icons for display
+function getReactionEmoji(code: string): string {
+  const mapping: Record<string, string> = {
+    '/-heart': '❤️',
+    '/-strong': '👍',
+    '/-weak': '👎',
+    ':>': '😂',
+    ':o': '😮',
+    ':--((': '😢',
+    ';--/': '😞',
+    ':-h': '😠',
+    ':-*': '😘',
+    ":')'": '😭',
+    ';xx': '🥰',
+    ';-)': '😉',
+    'x-)': '😎',
+    '/-rose': '🌹',
+    '/-break': '💔',
+    '/-li': '☀️',
+    '/-bd': '🎂',
+    '/-bome': '💣',
+    '/-ok': '👌',
+    '/-v': '✌️',
+    '/-thanks': '🙏',
+    '/-punch': '👊',
+    '/-share': '🤝',
+    '_()_': '🙇',
+    '/-no': '🚫',
+    '/-bad': '👎',
+    '/-loveu': '💌',
+    '/-beer': '🍺',
+  }
+  return mapping[code] || code
+}
+
 function renderMessageContent(
   content: any,
   knownNames: string[] = [],
   onMediaClick?: (url: string) => void,
   mediaCache?: Record<string, string>,
-  setMediaCache?: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  setMediaCache?: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  threadId?: string // NEW: Thread ID for call back button
 ) {
   if (!content) return null
 
@@ -216,7 +347,7 @@ function renderMessageContent(
             <span className={`text-[10px] text-${colorClass}-400 font-medium mt-0.5`}>[{fileExt.toUpperCase() || 'FILE'}]</span>
           </div>
           <div className="text-primary text-sm opacity-0 group-hover:opacity-100 transition-opacity">
-            ⬇️
+            <Download className="w-4 h-4" />
           </div>
         </button>
       )
@@ -376,7 +507,7 @@ function renderMessageContent(
             )}
             <div className="space-y-1">
               <div className="flex items-start gap-2">
-                <span className="text-sky-400 text-sm flex-shrink-0 mt-0.5">🔗</span>
+                <Link2 className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-bold text-white truncate group-hover:text-sky-300 transition-colors">
                     {linkTitle}
@@ -397,11 +528,56 @@ function renderMessageContent(
       )
     }
 
+    // CALL BUBBLE - Render call message card
+    if (parsedObj.type === 'call' || parsedObj.callType) {
+      const callType = parsedObj.callType || 'call'
+      const duration = parsedObj.duration || 0
+      const direction = parsedObj.direction || 'outgoing'
+      const status = parsedObj.status || 'completed'
+      const message = parsedObj.message || ''
+      
+      // Format duration
+      const formatDuration = (seconds: number): string => {
+        if (seconds < 60) return `${seconds} giây`
+        const mins = Math.floor(seconds / 60)
+        const secs = seconds % 60
+        return `${mins} phút ${secs} giây`
+      }
+      
+      // Determine call icon and color
+      const isVideo = callType.includes('video')
+      const isOutgoing = direction === 'outgoing' || direction === 'đi'
+      const icon = isVideo ? '📹' : '📞'
+      const colorClass = isOutgoing ? 'blue' : 'green'
+      const directionText = isVideo 
+        ? (isOutgoing ? 'Cuộc gọi video đi' : 'Cuộc gọi video đến')
+        : (isOutgoing ? 'Cuộc gọi thoại đi' : 'Cuộc gọi thoại đến')
+      
+      return (
+        <div className={`p-3 bg-dark-300/90 border border-${colorClass}-500/30 rounded-2xl max-w-xs shadow-md`}>
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center text-xl flex-shrink-0`}>
+              {icon}
+            </div>
+            <div className="flex flex-col flex-1">
+              <span className="text-xs font-bold text-white">{directionText}</span>
+              <span className={`text-[10px] text-${colorClass}-400 font-medium`}>
+                {duration > 0 ? formatDuration(duration) : 'Không kết nối'}
+              </span>
+              {message && (
+                <span className="text-[9px] text-gray-400 mt-0.5">{message}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     if (isImageObject) {
       return (
         <div className="p-3 bg-dark-300/90 border border-white/15 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
-          <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-xl flex-shrink-0">
-            🖼️
+          <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center flex-shrink-0">
+            <ImageIcon className="w-5 h-5 text-sky-400" />
           </div>
           <div className="flex flex-col truncate flex-1">
             <span className="text-xs font-bold text-white truncate">{titleText || 'Hình ảnh Zalo'}</span>
@@ -474,14 +650,14 @@ function renderMessageContent(
     
     // Fallback: Show icon with filename
     const isGif = /\.gif$/i.test(fileName)
-    const icon = isGif ? '🎬' : '🖼️'
+    const IconComponent = isGif ? Film : ImageIcon
     const label = isGif ? '[GIF Animation]' : '[Hình ảnh]'
     const colorClass = isGif ? 'purple' : 'sky'
     
     return (
       <div className={`p-3 bg-dark-300/90 border border-white/15 rounded-2xl flex items-center gap-3 max-w-xs shadow-md`}>
-        <div className={`w-10 h-10 rounded-xl bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center text-xl flex-shrink-0 ${isGif ? 'animate-pulse' : ''}`}>
-          {icon}
+        <div className={`w-10 h-10 rounded-xl bg-${colorClass}-500/20 border border-${colorClass}-400/30 flex items-center justify-center flex-shrink-0 ${isGif ? 'animate-pulse' : ''}`}>
+          <IconComponent className={`w-5 h-5 text-${colorClass}-400`} />
         </div>
         <div className="flex flex-col truncate flex-1">
           <span className="text-xs font-bold text-white truncate">{fileName}</span>
@@ -639,6 +815,8 @@ interface ZaloChatViewProps {
   onMutedThreadIdsChange?: (newSet: Set<string>) => void
   navigateToThreadId?: string | null
   onNavigateToThreadHandled?: () => void
+  typingUsers?: Record<string, Set<string>> // 🆕 threadId -> Set of user names typing
+  onUpdateMessageStatus?: (msgId: string, status: 'sending' | 'sent' | 'delivered' | 'seen', seenBy?: any[]) => void // 🆕 Callback để update status
 }
 
 export default function ZaloChatView({
@@ -652,6 +830,8 @@ export default function ZaloChatView({
   onMutedThreadIdsChange,
   navigateToThreadId,
   onNavigateToThreadHandled,
+  typingUsers = {}, // 🆕 Receive from parent
+  onUpdateMessageStatus, // 🆕 Callback
 }: ZaloChatViewProps) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeThreadId, setActiveThreadId] = useState<string | null>(() => {
@@ -694,16 +874,13 @@ export default function ZaloChatView({
 
         // Always update if this is the newest message for this thread
         const preview = getLastMessagePreview(log.content)
-        const timeStr = new Date(log.timestamp).toLocaleTimeString('vi-VN', {
-          hour: '2-digit',
-          minute: '2-digit',
-        })
+        const timeStr = formatConversationTime(log.timestamp)
 
         map.set(threadId, {
           ...(existing || {}),
           threadId,
           name: existing?.name || log.fromName || threadId,
-          avatar: existing?.avatar || log.avatar,
+          avatar: log.avatar || existing?.avatar, // 🔥 Prioritize new avatar from logs
           type: existing?.type || log.type || 'User',
           lastMessage: preview || 'Tin nhắn mới',
           lastTime: timeStr,
@@ -745,6 +922,168 @@ export default function ZaloChatView({
   const [historyMessages, setHistoryMessages] = useState<Record<string, Message[]>>({})
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+
+  // 🆕 Handler for group seen events from SSE
+  const handleGroupSeenEvent = useCallback((data: any) => {
+    const { msgId, seenBy, threadId } = data
+    
+    if (!msgId || !seenBy || !Array.isArray(seenBy)) {
+      console.warn('⚠️ [SSE] Invalid group_seen event data')
+      return
+    }
+    
+    console.log(`👥 [SSE] Group seen: ${seenBy.length} users saw message ${msgId} in thread ${threadId}`)
+    
+    // Update parent component's logs via callback (if provided)
+    if (onUpdateMessageStatus) {
+      onUpdateMessageStatus(msgId, 'seen', seenBy)
+    }
+    
+    // Update local history messages
+    setHistoryMessages((prevHistory) => {
+      const updated = { ...prevHistory }
+      Object.keys(updated).forEach((tid) => {
+        updated[tid] = updated[tid].map((msg) => {
+          if (msg.msgId === msgId || msg.cliMsgId === msgId || msg.id === msgId) {
+            return {
+              ...msg,
+              status: 'seen' as const,
+              seenBy: seenBy,
+            }
+          }
+          return msg
+        })
+      })
+      return updated
+    })
+  }, [onUpdateMessageStatus])
+
+  // 🆕 Handler for user (1:1) seen events from SSE
+  const handleUserSeenEvent = useCallback((data: any) => {
+    const { msgId, threadId } = data
+    
+    if (!msgId || !threadId) {
+      console.warn('⚠️ [SSE] Invalid user_seen event data')
+      return
+    }
+    
+    console.log(`👤 [SSE] User seen: message ${msgId} in thread ${threadId}`)
+    
+    // Update parent component's logs via callback (if provided)
+    if (onUpdateMessageStatus) {
+      onUpdateMessageStatus(msgId, 'seen')
+    }
+    
+    // Update local history messages
+    setHistoryMessages((prevHistory) => {
+      const updated = { ...prevHistory }
+      if (updated[threadId]) {
+        updated[threadId] = updated[threadId].map((msg) => {
+          if (msg.msgId === msgId || msg.cliMsgId === msgId || msg.id === msgId) {
+            return {
+              ...msg,
+              status: 'seen' as const,
+            }
+          }
+          return msg
+        })
+      }
+      return updated
+    })
+  }, [onUpdateMessageStatus])
+
+  // 🆕 Real-time event listener via SSE
+  useEffect(() => {
+    let eventSource: EventSource | null = null
+    let reconnectTimer: NodeJS.Timeout | null = null
+    let reconnectAttempts = 0
+    const MAX_RECONNECT_ATTEMPTS = 5
+    
+    const connectSSE = () => {
+      try {
+        console.log('🔌 [SSE] Connecting to real-time listener...')
+        console.log('🔌 [SSE] URL: /api/zalo/listener')
+        eventSource = new EventSource('/api/zalo/listener')
+        
+        eventSource.onopen = () => {
+          console.log('✅ [SSE] Connected successfully!')
+          console.log('✅ [SSE] Listening for: group_seen, user_seen, message, reaction, undo events')
+          reconnectAttempts = 0 // Reset on successful connection
+        }
+        
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            console.log('📡 [SSE] Received event:', data.type, data)
+            
+            // Handle different event types
+            switch (data.type) {
+              case 'group_seen':
+                console.log('👥 [SSE] Processing group_seen event...')
+                handleGroupSeenEvent(data)
+                break
+              case 'user_seen':
+                console.log('👤 [SSE] Processing user_seen event...')
+                handleUserSeenEvent(data)
+                break
+              case 'message':
+                // New message - already handled by parent component
+                console.log('📨 [SSE] New message event (handled by parent)')
+                break
+              case 'reaction':
+                // TODO: Handle reaction events
+                console.log('👍 [SSE] Reaction event:', data)
+                break
+              case 'undo':
+                // TODO: Handle undo events  
+                console.log('🔄 [SSE] Undo event:', data)
+                break
+              default:
+                // Silently ignore unknown event types
+                console.log('❓ [SSE] Unknown event type:', data.type)
+                break
+            }
+          } catch (error) {
+            console.error('❌ [SSE] Failed to parse event:', error, 'Raw:', event.data)
+          }
+        }
+        
+        eventSource.onerror = (error) => {
+          console.error('❌ [SSE] Connection error:', error)
+          eventSource?.close()
+          
+          // Exponential backoff reconnection
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) // Max 30s
+            reconnectAttempts++
+            
+            console.log(`🔄 [SSE] Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`)
+            
+            reconnectTimer = setTimeout(connectSSE, delay)
+          } else {
+            console.error('❌ [SSE] Max reconnection attempts reached. Please refresh the page.')
+          }
+        }
+      } catch (error) {
+        console.error('❌ [SSE] Failed to create EventSource:', error)
+      }
+    }
+    
+    // Initial connection
+    console.log('🚀 [SSE] Starting SSE connection...')
+    connectSSE()
+    
+    // Cleanup on unmount
+    return () => {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      if (eventSource) {
+        eventSource.close()
+        console.log('🔌 [SSE] Disconnected from real-time listener')
+      }
+    }
+  }, [handleGroupSeenEvent, handleUserSeenEvent])
   const [syncNotice, setSyncNotice] = useState<string | null>(null)
   const [avatarMap, setAvatarMap] = useState<Record<string, string>>({})
   
@@ -815,6 +1154,19 @@ export default function ZaloChatView({
   const [mentionQuery, setMentionQuery] = useState('')
   const [chatBg, setChatBg] = useState<string>('default')
   const [showBgModal, setShowBgModal] = useState(false)
+  const [showAddFriendModal, setShowAddFriendModal] = useState(false)
+  const [showJoinGroupModal, setShowJoinGroupModal] = useState(false)
+  const [showPrivacySettings, setShowPrivacySettings] = useState(false) // 🆕 Privacy settings modal
+  const [showQRCodeModal, setShowQRCodeModal] = useState(false) // 🆕 QR Code modal
+  const [showFriendManagementModal, setShowFriendManagementModal] = useState(false) // 🆕 Friend management modal
+  const [showProfileManagementModal, setShowProfileManagementModal] = useState(false) // 🆕 Profile management modal
+  const [showUserInfoModal, setShowUserInfoModal] = useState(false) // 🆕 User info modal (for other users)
+  const [selectedUserId, setSelectedUserId] = useState<string>('') // 🆕 Selected user ID for info modal
+  const [selectedUserName, setSelectedUserName] = useState<string>('') // 🆕 Selected user name
+  const [selectedUserAvatar, setSelectedUserAvatar] = useState<string>('') // 🆕 Selected user avatar
+  const [qrCodeUserId, setQrCodeUserId] = useState<string | undefined>()
+  const [qrCodeUserName, setQrCodeUserName] = useState<string | undefined>()
+  const [showMoreMenu, setShowMoreMenu] = useState(false) // 🆕 More dropdown menu
 
   // Sticker & File Attachment States
   const [showStickerPicker, setShowStickerPicker] = useState(false)
@@ -953,6 +1305,27 @@ export default function ZaloChatView({
     }
   }, [showStickerPicker])
 
+  // 🆕 Close more menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showMoreMenu) {
+        const target = event.target as HTMLElement
+        // Check if click is inside the menu or the toggle button
+        const isInsideMenu = target.closest('.more-menu-dropdown')
+        const isToggleButton = target.closest('.more-menu-toggle')
+        
+        if (!isInsideMenu && !isToggleButton) {
+          setShowMoreMenu(false)
+        }
+      }
+    }
+
+    if (showMoreMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMoreMenu])
+
   const POPULAR_EMOJIS = ['😂', '🥰', '😍', '😭', '😎', '🤣', '👍', '❤️', '🔥', '🎉', '🙏', '✨', '💡', '🚀', '💯', '🤝', '😊', '🤔', '😅', '🥳', '💩', '🤡', '👻', '💀']
 
   const handleSendSticker = async (stk: { id: string; cateId: number; type?: number; url?: string }) => {
@@ -1038,7 +1411,7 @@ export default function ZaloChatView({
         map.set(activeThreadId, {
           ...existing,
           lastMessage: 'Bạn: [Sticker GIF]',
-          lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          lastTime: formatConversationTime(Date.now()),
           lastTimestamp: Date.now(),
         })
       }
@@ -1165,7 +1538,7 @@ export default function ZaloChatView({
         map.set(activeThreadId, {
           ...existing,
           lastMessage: 'Bạn: [Bilibili Sticker]',
-          lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          lastTime: formatConversationTime(Date.now()),
           lastTimestamp: Date.now(),
         })
       }
@@ -1334,6 +1707,7 @@ export default function ZaloChatView({
   const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null)
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null)
   const [contextMenu, setContextMenu] = useState<{ msg: Message; x: number; y: number } | null>(null)
+  const [reactionPicker, setReactionPicker] = useState<{ msg: Message; x: number; y: number } | null>(null)
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null)
   const [starredMsgIds, setStarredMsgIds] = useState<Set<string | number>>(new Set())
   const [recalledMsgIds, setRecalledMsgIds] = useState<Set<string | number>>(new Set())
@@ -1733,10 +2107,10 @@ export default function ZaloChatView({
       const next = new Set(prev)
       if (next.has(threadId)) {
         next.delete(threadId)
-        setSyncNotice('📌 Đã bỏ ghim hội thoại!')
+        setSyncNotice('Đã bỏ ghim hội thoại!')
       } else {
         next.add(threadId)
-        setSyncNotice('📌 Đã ghim hội thoại lên đầu danh sách!')
+        setSyncNotice('Đã ghim hội thoại lên đầu danh sách!')
       }
       if (typeof window !== 'undefined') {
         localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(next)))
@@ -1749,7 +2123,7 @@ export default function ZaloChatView({
     if (!window.confirm('Bạn có chắc chắn muốn rời khỏi nhóm này? Hành động này sẽ rời nhóm trên cả Zalo App và Web!')) {
       return
     }
-    setSyncNotice('🚪 Đang thực hiện rời nhóm...')
+    setSyncNotice('Đang thực hiện rời nhóm...')
     try {
       const res = await fetch('/api/zalo/leave-group', {
         method: 'POST',
@@ -1763,10 +2137,10 @@ export default function ZaloChatView({
         setActiveThreadId(null)
         setShowRightInfoDrawer(false)
       } else {
-        setSyncNotice(`❌ Lỗi rời nhóm: ${data.error || 'Vui lòng thử lại'}`)
+        setSyncNotice(`Lỗi rời nhóm: ${data.error || 'Vui lòng thử lại'}`)
       }
     } catch (e: any) {
-      setSyncNotice(`❌ Lỗi rời nhóm: ${e.message}`)
+      setSyncNotice(`Lỗi rời nhóm: ${e.message}`)
     }
   }
 
@@ -1835,7 +2209,7 @@ export default function ZaloChatView({
       } catch (e) {}
     }
     setContextMenu(null)
-    setSyncNotice('📋 Đã chép tin nhắn vào bộ nhớ tạm!')
+    setSyncNotice('Đã chép tin nhắn vào bộ nhớ tạm!')
   }
 
   const handlePinMessage = (msg: Message) => {
@@ -1871,11 +2245,14 @@ export default function ZaloChatView({
     })
   }
 
-  const handleDeleteLocalMessage = (msgId: string | number) => {
-    // Add to locally deleted set
+  const handleDeleteLocalMessage = async (msg: Message) => {
+    const msgId = msg.id
+    const threadId = msg.threadId
+    
+    // Add to locally deleted set immediately for UI
     setDeletedLocallyMsgIds((prev) => new Set(prev).add(msgId))
     
-    // Also remove from historyMessages
+    // Also remove from historyMessages for UI
     if (activeThreadId) {
       setHistoryMessages((prev) => ({
         ...prev,
@@ -1884,12 +2261,36 @@ export default function ZaloChatView({
     }
     
     setContextMenu(null)
-    setSyncNotice('🗑️ Đã xóa tin nhắn ở phía bạn (chỉ ẩn trên web này)')
+    setSyncNotice('Đang xóa tin nhắn...')
+
+    // Call API to delete message on Zalo server
+    try {
+      const res = await fetch('/api/zalo/delete-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: String(msg.msgId || msg.id),
+          threadId: String(threadId),
+          threadType: msg.type === 'Group' ? 1 : 0
+        })
+      })
+
+      const data = await res.json()
+      
+      if (data.success) {
+        setSyncNotice('Đã xóa tin nhắn trên cả Web & App!')
+      } else {
+        setSyncNotice(`Đã xóa trên Web nhưng lỗi xóa trên App: ${data.error || 'Không rõ lỗi'}`)
+      }
+    } catch (e: any) {
+      console.error('Delete message error:', e)
+      setSyncNotice('Đã xóa tin nhắn trên Web (chỉ ẩn ở phía bạn)')
+    }
   }
 
   const handleRecallMessage = async (msg: Message) => {
     if (!msg.isSelf) {
-      setSyncNotice('⚠️ Bạn chỉ có thể thu hồi tin nhắn do chính bạn gửi!')
+      setSyncNotice('Bạn chỉ có thể thu hồi tin nhắn do chính bạn gửi!')
       setContextMenu(null)
       return
     }
@@ -1905,21 +2306,47 @@ export default function ZaloChatView({
         if (String(c.threadId) === targetThreadId) {
           return {
             ...c,
-            lastMessage: (msg.isSelf ? 'Bạn: ' : '') + 'Tin nhắn đã được thu hồi',
+            lastMessage: (() => {
+              const undoText = 'Tin nhắn đã được thu hồi'
+              // For group messages, show sender name
+              if (c.type === 'Group') {
+                if (msg.isSelf) {
+                  return 'Bạn: ' + undoText
+                } else {
+                  const senderName = msg.fromName || 'Ai đó'
+                  return senderName + ': ' + undoText
+                }
+              }
+              // For 1-1 messages, just show undo text
+              return undoText
+            })(),
           }
         }
         return c
       })
     )
 
-    // Update history messages content in local state
+    // Update history messages content in local state (Optimistic update)
     setHistoryMessages((prev) => ({
       ...prev,
-      [targetThreadId]: (prev[targetThreadId] || []).map((m) =>
-        m.id === msg.id || (m.msgId && String(m.msgId) === String(msg.msgId))
-          ? { ...m, content: 'Tin nhắn đã được thu hồi', isUndo: true }
-          : m
-      ),
+      [targetThreadId]: (prev[targetThreadId] || []).map((m) => {
+        // Match by multiple IDs to ensure we find the right message
+        const isMatch = 
+          m.id === msg.id || 
+          (m.msgId && String(m.msgId) === String(msg.msgId)) ||
+          (m.cliMsgId && String(m.cliMsgId) === String(msg.cliMsgId)) ||
+          (m.msgId && msg.msgId && String(m.msgId) === String(msg.msgId)) ||
+          ((m as any).globalMsgId && (msg as any).globalMsgId && String((m as any).globalMsgId) === String((msg as any).globalMsgId))
+        
+        if (isMatch) {
+          return { 
+            ...m, 
+            content: '🔄 Tin nhắn đã được thu hồi', 
+            isUndo: true 
+          }
+        }
+        return m
+      }),
     }))
 
     try {
@@ -1944,12 +2371,98 @@ export default function ZaloChatView({
       })
       const data = await res.json()
       if (data.success) {
-        setSyncNotice('🔄 Đã thu hồi tin nhắn trên Zalo!')
+        setSyncNotice('Đã thu hồi tin nhắn trên Zalo!')
       } else {
-        setSyncNotice(`⚠️ Lỗi thu hồi Zalo: ${data.error || 'Không thể thu hồi'}`)
+        setSyncNotice(`Lỗi thu hồi Zalo: ${data.error || 'Không thể thu hồi'}`)
       }
     } catch (e: any) {
-      setSyncNotice('🔄 Đã thu hồi tin nhắn!')
+      setSyncNotice('Đã thu hồi tin nhắn!')
+    }
+  }
+
+  // Handle adding reaction to a message
+  const handleAddReaction = async (msg: Message, icon: string) => {
+    try {
+      const targetThreadId = String(activeThreadId || msg.threadId || '')
+      const activeThread = conversations.find((c) => String(c.threadId) === targetThreadId)
+      const threadType = activeThread?.type || msg.type || 'User'
+
+      console.log('📤 Adding reaction:', {
+        messageId: msg.msgId || msg.id,
+        cliMsgId: msg.cliMsgId,
+        threadId: targetThreadId,
+        threadType,
+        icon,
+      })
+
+      // 🆕 Optimistic UI update - add reaction immediately
+      const msgIdStr = String(msg.msgId || msg.cliMsgId || msg.id)
+      const displayIcon = getReactionEmoji(icon) // Convert code to emoji for display
+      
+      setHistoryMessages((prev) => ({
+        ...prev,
+        [targetThreadId]: (prev[targetThreadId] || []).map((m) => {
+          const mIdStr = String(m.msgId || m.cliMsgId || m.id)
+          if (mIdStr === msgIdStr) {
+            // Add reaction to this message
+            const currentReactions = m.reactions || []
+            const ownId = userInfo?.userId || 'self'
+            
+            // Remove existing reaction from this user
+            const filteredReactions = currentReactions.filter(r => r.userId !== ownId)
+            
+            // Add new reaction if icon provided (empty icon = remove)
+            const newReactions = icon 
+              ? [...filteredReactions, { userId: ownId, userName: 'Bạn', icon: displayIcon, count: 1 }]
+              : filteredReactions
+            
+            return { ...m, reactions: newReactions }
+          }
+          return m
+        })
+      }))
+
+      const res = await fetch('/api/zalo/add-reaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId: String(msg.msgId || msg.id),
+          cliMsgId: String(msg.cliMsgId || msg.msgId || msg.id),
+          threadId: targetThreadId,
+          threadType,
+          icon,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        setSyncNotice(icon ? '👍 Đã thêm biểu cảm!' : '🚫 Đã gỡ biểu cảm!')
+      } else {
+        // Revert optimistic update on error
+        setSyncNotice(`Lỗi: ${data.error || 'Không thể thêm biểu cảm'}`)
+        console.error('Failed to add reaction:', data)
+        
+        // Rollback: remove the optimistic reaction
+        setHistoryMessages((prev) => ({
+          ...prev,
+          [targetThreadId]: (prev[targetThreadId] || []).map((m) => {
+            const mIdStr = String(m.msgId || m.cliMsgId || m.id)
+            if (mIdStr === msgIdStr) {
+              const currentReactions = m.reactions || []
+              const ownId = userInfo?.userId || 'self'
+              return { 
+                ...m, 
+                reactions: currentReactions.filter(r => r.userId !== ownId)
+              }
+            }
+            return m
+          })
+        }))
+      }
+    } catch (e: any) {
+      setSyncNotice('❌ Lỗi khi thêm biểu cảm!')
+      console.error('Error adding reaction:', e)
     }
   }
 
@@ -2106,7 +2619,7 @@ export default function ZaloChatView({
             map.set(official.threadId, {
               ...existing,
               name: official.name, // Real friend name (e.g. nguyễn vna thắng)
-              avatar: official.avatar || existing.avatar,
+              avatar: official.avatar || existing.avatar, // Keep official avatar priority
               type: official.type,
             })
           } else {
@@ -2136,7 +2649,7 @@ export default function ZaloChatView({
   const handleManualSync = async () => {
     if (isSyncing) return
     setIsSyncing(true)
-    setSyncNotice('🔄 Đang gửi yêu cầu đồng bộ tin nhắn từ điện thoại...')
+    setSyncNotice('Đang gửi yêu cầu đồng bộ tin nhắn từ điện thoại...')
 
     try {
       await fetchData()
@@ -2158,7 +2671,7 @@ export default function ZaloChatView({
 
       setSyncNotice('✅ Đã đồng bộ tin nhắn & làm mới dữ liệu từ điện thoại!')
     } catch (e) {
-      setSyncNotice('⚠️ Đã gửi yêu cầu đồng bộ tin nhắn.')
+      setSyncNotice('Đã gửi yêu cầu đồng bộ tin nhắn.')
     } finally {
       setIsSyncing(false)
       setTimeout(() => setSyncNotice(null), 4000)
@@ -2202,8 +2715,11 @@ export default function ZaloChatView({
       }
 
       // Optimistic UI update
+      // Generate a temporary cliMsgId that will match the real message from the API
+      const tempCliMsgId = `temp_${Date.now()}`
       const tempMsg: Message = {
         id: Date.now(),
+        cliMsgId: tempCliMsgId, // Add cliMsgId for deduplication
         threadId: activeThreadId,
         from: userInfo?.userId || 'self',
         fromName: 'Bạn (Chính mình)',
@@ -2212,6 +2728,7 @@ export default function ZaloChatView({
         timestamp: new Date().toISOString(),
         type: activeConv?.type || 'User',
         isSelf: true,
+        status: 'sending', // 🆕 Set initial status
         quote: replyingToMessage ? {
           id: replyingToMessage.id,
           msgId: replyingToMessage.msgId,
@@ -2247,21 +2764,46 @@ export default function ZaloChatView({
 
       const data = await res.json()
       if (!data.success) {
-        setSyncNotice(`⚠️ Lỗi gửi tin nhắn: ${data.error || 'Vui lòng thử lại'}`)
+        setSyncNotice(`Lỗi gửi tin nhắn: ${data.error || 'Vui lòng thử lại'}`)
         // Remove optimistic message on error
         setHistoryMessages((prev) => ({
           ...prev,
           [activeThreadId]: (prev[activeThreadId] || []).filter(m => m.id !== tempMsg.id)
         }))
       } else {
+        // ✅ Replace optimistic message with real message from API
+        if (data.message) {
+          setHistoryMessages((prev) => ({
+            ...prev,
+            [activeThreadId]: (prev[activeThreadId] || []).map(m => 
+              // Match by cliMsgId (more reliable) or fallback to id
+              (m.cliMsgId && m.cliMsgId === tempCliMsgId) || m.id === tempMsg.id
+                ? { 
+                    ...data.message, 
+                    isSelf: true,
+                    status: 'sent', // 🆕 Update status to 'sent'
+                  } 
+                : m
+            )
+          }))
+        }
+        
         // Update conversation last message
         setConversations((prev) =>
           prev.map((c) =>
             c.threadId === activeThreadId
               ? {
                   ...c,
-                  lastMessage: 'Bạn: ' + (selectedFile ? `[File: ${selectedFile.name}]` : inputText.trim()),
-                  lastTime: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                  lastMessage: (() => {
+                    const content = selectedFile ? `[File: ${selectedFile.name}]` : inputText.trim()
+                    // For group messages, always show "Bạn:" since we're sending
+                    if (c.type === 'Group') {
+                      return 'Bạn: ' + content
+                    }
+                    // For 1-1 messages, just show content
+                    return content
+                  })(),
+                  lastTime: formatConversationTime(Date.now()),
                   lastTimestamp: Date.now(),
                 }
               : c
@@ -2270,7 +2812,7 @@ export default function ZaloChatView({
       }
     } catch (err: any) {
       console.error('Failed to send message:', err)
-      setSyncNotice('⚠️ Lỗi gửi tin nhắn. Vui lòng thử lại!')
+      setSyncNotice('Lỗi gửi tin nhắn. Vui lòng thử lại!')
     } finally {
       setIsSending(false)
       // Auto scroll to bottom
@@ -2279,6 +2821,104 @@ export default function ZaloChatView({
       }, 100)
     }
   }
+
+  // Send typing indicator
+  const sendTypingIndicator = useCallback(async () => {
+    if (!activeThreadId) return
+    
+    // 🆕 Check privacy settings
+    const enableTyping = localStorage.getItem('zalo_enable_typing_indicator')
+    if (enableTyping === 'false') {
+      console.log('⏩ [Typing] Disabled by user privacy settings')
+      return
+    }
+    
+    const activeThread = conversations.find(c => String(c.threadId) === String(activeThreadId))
+    if (!activeThread) return
+
+    try {
+      await fetch('/api/zalo/typing-seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_typing',
+          threadId: activeThreadId,
+          threadType: activeThread.type,
+        }),
+      })
+    } catch (error) {
+      console.error('Error sending typing indicator:', error)
+    }
+  }, [activeThreadId, conversations])
+
+  // Send seen event for messages
+  const sendSeenEvent = useCallback(async (messages: any[]) => {
+    if (!activeThreadId || messages.length === 0) return
+    
+    // 🆕 Check privacy settings
+    const enableReceipts = localStorage.getItem('zalo_enable_read_receipts')
+    if (enableReceipts === 'false') {
+      console.log('⏩ [Seen] Disabled by user privacy settings')
+      return
+    }
+    
+    const activeThread = conversations.find(c => String(c.threadId) === String(activeThreadId))
+    if (!activeThread) return
+
+    try {
+      const messageParams = messages.map(msg => ({
+        msgId: String(msg.msgId || msg.id),
+        cliMsgId: String(msg.cliMsgId || msg.msgId || msg.id),
+        uidFrom: String(msg.from),
+        idTo: String(activeThreadId),
+        msgType: '1',
+        st: 0,
+        at: 0,
+        cmd: 501,
+        ts: String(Date.now()),
+      }))
+
+      await fetch('/api/zalo/typing-seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_seen',
+          messages: messageParams,
+          threadType: activeThread.type,
+        }),
+      })
+    } catch (error) {
+      console.error('Error sending seen event:', error)
+    }
+  }, [activeThreadId, conversations])
+
+  // Throttled typing indicator (send max once per 3 seconds)
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const sendTypingThrottled = useCallback(() => {
+    if (typingTimeoutRef.current) return // Already scheduled
+    
+    sendTypingIndicator()
+    typingTimeoutRef.current = setTimeout(() => {
+      typingTimeoutRef.current = null
+    }, 3000)
+  }, [sendTypingIndicator])
+
+  // Auto-send seen event when switching to a conversation
+  useEffect(() => {
+    if (!activeThreadId) return
+    
+    const messages = historyMessages[activeThreadId] || []
+    const unseenMessages = messages.filter(msg => !msg.isSelf && msg.msgId)
+    
+    if (unseenMessages.length > 0) {
+      // Send seen event after a short delay
+      const timer = setTimeout(() => {
+        sendSeenEvent(unseenMessages)
+      }, 1000)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [activeThreadId, historyMessages, sendSeenEvent])
 
   // 2. Sync conversations from incoming message logs
   useEffect(() => {
@@ -2296,7 +2936,7 @@ export default function ZaloChatView({
 
         const msgTime = msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now()
         const timeStr = msg.timestamp
-          ? new Date(msg.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+          ? formatConversationTime(msg.timestamp)
           : ''
 
         let convName = existing?.name
@@ -2311,9 +2951,22 @@ export default function ZaloChatView({
         map.set(tid, {
           threadId: tid,
           name: convName,
-          avatar: existing?.avatar || '',
+          avatar: msg.avatar || existing?.avatar || '', // 🔥 Prioritize avatar from new message
           type: msg.type || existing?.type || 'User',
-          lastMessage: (msg.isSelf ? 'Bạn: ' : '') + getLastMessagePreview(msg.content),
+          lastMessage: (() => {
+            // For group messages, show sender name
+            if (msg.type === 'Group') {
+              if (msg.isSelf) {
+                return 'Bạn: ' + getLastMessagePreview(msg.content)
+              } else {
+                // Show sender's name for group messages
+                const senderName = msg.fromName || 'Ai đó'
+                return senderName + ': ' + getLastMessagePreview(msg.content)
+              }
+            }
+            // For 1-1 messages, just show content (no prefix needed)
+            return getLastMessagePreview(msg.content)
+          })(),
           lastTime: timeStr || existing?.lastTime || '',
           lastTimestamp: Math.max(existing?.lastTimestamp || 0, msgTime),
           totalMember: existing?.totalMember,
@@ -2365,8 +3018,21 @@ export default function ZaloChatView({
                 if (existing) {
                   map.set(activeThreadId, {
                     ...existing,
-                    lastMessage: (latestMsg.isSelf ? 'Bạn: ' : '') + getLastMessagePreview(latestMsg.content),
-                    lastTime: new Date(latestMsg.timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+                    lastMessage: (() => {
+                      // For group messages, show sender name
+                      if (existing.type === 'Group') {
+                        if (latestMsg.isSelf) {
+                          return 'Bạn: ' + getLastMessagePreview(latestMsg.content)
+                        } else {
+                          // Show sender's name for group messages
+                          const senderName = latestMsg.fromName || 'Ai đó'
+                          return senderName + ': ' + getLastMessagePreview(latestMsg.content)
+                        }
+                      }
+                      // For 1-1 messages, just show content
+                      return getLastMessagePreview(latestMsg.content)
+                    })(),
+                    lastTime: formatConversationTime(latestMsg.timestamp),
                     lastTimestamp: Math.max(existing.lastTimestamp || 0, latestTs),
                   })
                 }
@@ -2699,7 +3365,11 @@ export default function ZaloChatView({
         </div>
 
         {/* Bottom User Avatar */}
-        <div className="relative group">
+        <button
+          onClick={() => setShowProfileManagementModal(true)}
+          className="relative group cursor-pointer hover:scale-105 transition-transform"
+          title="Quản lý Profile"
+        >
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary p-0.5 shadow-md">
             {userInfo?.avatar ? (
               <img src={userInfo.avatar} alt="Avatar" className="w-full h-full rounded-full object-cover" />
@@ -2709,7 +3379,13 @@ export default function ZaloChatView({
               </div>
             )}
           </div>
-        </div>
+          {/* Hover tooltip */}
+          <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap">
+            <div className="bg-dark-100 border border-white/20 rounded-lg px-3 py-1.5 text-xs text-white shadow-lg">
+              Quản lý Profile
+            </div>
+          </div>
+        </button>
       </div>
 
       {/* 2. Middle Conversation List Column */}
@@ -2725,19 +3401,104 @@ export default function ZaloChatView({
                 onChange={(e) => setConversationSearchQuery(e.target.value)}
                 className="w-full bg-dark-300 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-gray-400 focus:outline-none focus:border-primary"
               />
-              <svg className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
             </div>
 
             <button
               onClick={handleManualSync}
               disabled={isSyncing}
               title="Đồng bộ tin nhắn từ điện thoại"
-              className="px-2.5 py-2 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-400 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50"
+              className="px-2.5 py-2 bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-400 rounded-xl text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 flex-shrink-0"
             >
-              <span className={isSyncing ? 'animate-spin' : ''}>🔄</span>
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* Invite Box Button - Keep outside for badge visibility */}
+            <InviteBoxButton />
+
+            {/* 🆕 More Menu Dropdown */}
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+                title="Thêm tùy chọn"
+                className="more-menu-toggle px-2.5 py-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white rounded-xl text-xs font-semibold flex items-center gap-1 transition-all"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+
+              {/* Dropdown Menu */}
+              {showMoreMenu && (
+                <div 
+                  className="more-menu-dropdown absolute right-0 top-full mt-2 w-56 bg-dark-300 border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-50 animate-slideDown"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Menu Items */}
+                  <div className="py-2">
+                    {/* Add Friend */}
+                    <button
+                      onClick={() => {
+                        setShowAddFriendModal(true)
+                        setShowMoreMenu(false)
+                      }}
+                      className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    >
+                      <UserPlus className="w-5 h-5 text-sky-400" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-white">Thêm bạn bè</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Qua số điện thoại</p>
+                      </div>
+                    </button>
+
+                    {/* Join Group */}
+                    <button
+                      onClick={() => {
+                        setShowJoinGroupModal(true)
+                        setShowMoreMenu(false)
+                      }}
+                      className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    >
+                      <Link2 className="w-5 h-5 text-green-400" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-white">Tham gia nhóm</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Qua link mời</p>
+                      </div>
+                    </button>
+
+                    <div className="my-1.5 border-t border-white/10"></div>
+
+                    {/* 🆕 Friend Management */}
+                    <button
+                      onClick={() => {
+                        setShowFriendManagementModal(true)
+                        setShowMoreMenu(false)
+                      }}
+                      className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    >
+                      <Users className="w-5 h-5 text-purple-400" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-white">Quản lý bạn bè</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Lời mời, xóa, chặn</p>
+                      </div>
+                    </button>
+
+                    {/* Privacy Settings */}
+                    <button
+                      onClick={() => {
+                        setShowPrivacySettings(true)
+                        setShowMoreMenu(false)
+                      }}
+                      className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/10 transition-colors text-left"
+                    >
+                      <Lock className="w-5 h-5 text-purple-400" />
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-white">Cài đặt riêng tư</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Typing & Read Receipts</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Filter Tabs */}
@@ -2825,7 +3586,21 @@ export default function ZaloChatView({
                   >
                     <div className="relative">
                       {conv.avatar ? (
-                        <img src={conv.avatar} alt={conv.name} className="w-11 h-11 rounded-2xl object-cover" />
+                        <img 
+                          src={conv.avatar} 
+                          alt={conv.name} 
+                          className="w-11 h-11 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all" 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (conv.type !== 'Group') {
+                              // Open user info modal for 1-on-1 chat
+                              setSelectedUserId(conv.threadId)
+                              setSelectedUserName(conv.name)
+                              setSelectedUserAvatar(conv.avatar || '')
+                              setShowUserInfoModal(true)
+                            }
+                          }}
+                        />
                       ) : (
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow">
                           {conv.type === 'Group' ? '👨‍👩‍👧' : conv.name.charAt(0)}
@@ -2854,8 +3629,16 @@ export default function ZaloChatView({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <h4 className="text-xs font-semibold text-white truncate max-w-[130px] flex items-center gap-1">
-                          {isPinned && <span className="text-amber-400 text-[10px]" title="Đã ghim">📌</span>}
-                          {isMuted && <span className="text-gray-500 text-[10px]" title="Đã tắt thông báo">🔕</span>}
+                          {isPinned && (
+                            <span title="Đã ghim">
+                              <Pin className="w-3 h-3 text-amber-400" />
+                            </span>
+                          )}
+                          {isMuted && (
+                            <span title="Đã tắt thông báo">
+                              <BellOff className="w-3 h-3 text-gray-500" />
+                            </span>
+                          )}
                           <span className="truncate">{conv.name}</span>
                         </h4>
                         <span className="text-[10px] text-gray-400">{conv.lastTime}</span>
@@ -2868,11 +3651,12 @@ export default function ZaloChatView({
                       {conv.type === 'Group' && (
                         <div className="mt-1 flex items-center gap-1.5">
                           <span
-                            className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5 ${
                               isWhitelisted ? 'bg-success/20 text-success' : 'bg-gray-700 text-gray-400'
                             }`}
                           >
-                            {isWhitelisted ? '🤖 Auto-Reply Bật' : '🤖 Auto-Reply Tắt'}
+                            <Bot className="w-2.5 h-2.5" />
+                            <span>{isWhitelisted ? 'Auto-Reply Bật' : 'Auto-Reply Tắt'}</span>
                           </span>
                         </div>
                       )}
@@ -2964,7 +3748,7 @@ export default function ZaloChatView({
                   }`}
                   title="Tìm kiếm tin nhắn"
                 >
-                  <span className="text-sm sm:text-base">🔍</span>
+                  <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="hidden lg:inline font-medium">Tìm kiếm</span>
                 </button>
                 
@@ -2978,7 +3762,7 @@ export default function ZaloChatView({
                     }`}
                     title={isGroupBotWhitelisted ? 'Tắt Auto-Reply nhóm' : 'Bật Auto-Reply nhóm'}
                   >
-                    <span className="text-sm sm:text-base">🤖</span>
+                    <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span className="hidden xl:inline">Auto-Reply: {isGroupBotWhitelisted ? 'Đang BẬT' : 'Đang TẮT'}</span>
                     <span className="xl:hidden">{isGroupBotWhitelisted ? 'BẬT' : 'TẮT'}</span>
                   </button>
@@ -2995,10 +3779,10 @@ export default function ZaloChatView({
                     className="btn text-[10px] sm:text-xs py-1 sm:py-1.5 px-2 sm:px-3 flex items-center gap-0.5 sm:gap-1 rounded-lg sm:rounded-xl border border-white/15 bg-dark-300 hover:bg-white/10 text-gray-200 transition-all flex-shrink-0 shadow cursor-pointer"
                     title="Menu tính năng"
                   >
-                    <span className="text-sm sm:text-base">⚡</span>
+                    <MoreVertical className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     <span className="hidden sm:inline font-medium">Thao tác</span>
                     <span className="sm:hidden font-medium">Menu</span>
-                    <span className="text-[8px] sm:text-[9px]">▼</span>
+                    <ChevronDown className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
                   </button>
 
                   {showHeaderActionMenu && (
@@ -3030,7 +3814,7 @@ export default function ZaloChatView({
                         disabled={isSyncing}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-sky-300 hover:bg-white/10 transition-all font-medium cursor-pointer"
                       >
-                        <span className={isSyncing ? 'animate-spin text-base' : 'text-base'}>🔄</span>
+                        <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                         <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ tin nhắn'}</span>
                       </button>
 
@@ -3042,7 +3826,7 @@ export default function ZaloChatView({
                         }}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-purple-300 hover:bg-white/10 transition-all font-medium cursor-pointer"
                       >
-                        <span className="text-base">🎨</span>
+                        <Palette className="w-4 h-4" />
                         <span>Đổi hình nền Chat</span>
                       </button>
 
@@ -3054,7 +3838,7 @@ export default function ZaloChatView({
                         }}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-gray-200 hover:bg-white/10 transition-all font-medium cursor-pointer"
                       >
-                        <span className="text-base">⚙️</span>
+                        <Settings className="w-4 h-4" />
                         <span>Cài đặt Bot Zalo</span>
                       </button>
 
@@ -3066,7 +3850,7 @@ export default function ZaloChatView({
                         }}
                         className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-amber-300 hover:bg-white/10 transition-all font-medium cursor-pointer"
                       >
-                        <span className="text-base">📌</span>
+                        <Pin className="w-4 h-4" />
                         <span>{activeConv && pinnedThreadIds.has(String(activeConv.threadId)) ? 'Bỏ ghim hội thoại' : 'Ghim hội thoại lên đầu'}</span>
                       </button>
 
@@ -3082,7 +3866,11 @@ export default function ZaloChatView({
                             : 'text-orange-300'
                         }`}
                       >
-                        <span className="text-base">{activeConv && mutedThreadIds.has(String(activeConv.threadId)) ? '🔔' : '🔕'}</span>
+                        {activeConv && mutedThreadIds.has(String(activeConv.threadId)) ? (
+                          <Bell className="w-4 h-4" />
+                        ) : (
+                          <BellOff className="w-4 h-4" />
+                        )}
                         <span>{activeConv && mutedThreadIds.has(String(activeConv.threadId)) ? 'Bật lại thông báo' : 'Tắt thông báo'}</span>
                       </button>
                       {activeConv?.type === 'Group' && (
@@ -3094,9 +3882,77 @@ export default function ZaloChatView({
                           }}
                           className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-red-400 hover:bg-white/10 transition-all font-medium cursor-pointer"
                         >
-                          <span className="text-base">🚪</span>
+                          <DoorOpen className="w-4 h-4" />
                           <span>Rời khỏi nhóm này</span>
                         </button>
+                      )}
+                      
+                      {/* 🆕 User-specific actions (1:1 chat only) */}
+                      {activeConv?.type === 'User' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`Bạn có chắc muốn xóa bạn bè với ${activeConv.name}?`)) return
+                              
+                              try {
+                                const res = await fetch('/api/zalo/remove-friend', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userId: activeConv.threadId })
+                                })
+                                const data = await res.json()
+                                
+                                if (data.success) {
+                                  alert('✅ Đã xóa bạn bè')
+                                  setShowHeaderActionMenu(false)
+                                } else {
+                                  alert('❌ ' + (data.error || 'Không thể xóa bạn bè'))
+                                }
+                              } catch (error) {
+                                console.error('Remove friend error:', error)
+                                alert('❌ Lỗi khi xóa bạn bè')
+                              }
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-orange-400 hover:bg-white/10 transition-all font-medium cursor-pointer"
+                          >
+                            <UserMinus className="w-4 h-4" />
+                            <span>Xóa bạn bè</span>
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`Bạn có chắc muốn chặn ${activeConv.name}?`)) return
+                              
+                              try {
+                                const res = await fetch('/api/zalo/block-user', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ userId: activeConv.threadId })
+                                })
+                                const data = await res.json()
+                                
+                                if (data.success) {
+                                  alert('✅ Đã chặn người dùng')
+                                  setShowHeaderActionMenu(false)
+                                  // Remove from conversations
+                                  setConversations((prev) => prev.filter((c) => c.threadId !== activeConv.threadId))
+                                  setActiveThreadId(null)
+                                } else {
+                                  alert('❌ ' + (data.error || 'Không thể chặn người dùng'))
+                                }
+                              } catch (error) {
+                                console.error('Block user error:', error)
+                                alert('❌ Lỗi khi chặn người dùng')
+                              }
+                            }}
+                            className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-red-400 hover:bg-white/10 transition-all font-medium cursor-pointer"
+                          >
+                            <UserX className="w-4 h-4" />
+                            <span>Chặn người dùng</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   )}
@@ -3112,7 +3968,7 @@ export default function ZaloChatView({
                       : 'bg-gradient-to-r from-sky-600 to-blue-600 border-sky-500 text-white hover:brightness-110'
                   }`}
                 >
-                  <span className="text-sm sm:text-base">ℹ️</span>
+                  <Info className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="hidden sm:inline">Thông tin</span>
                   <span className="sm:hidden">Info</span>
                 </button>
@@ -3294,13 +4150,31 @@ export default function ZaloChatView({
                               <img
                                 src={avatarSrc}
                                 alt={msg.fromName}
-                                className="w-8 h-8 rounded-full object-cover border border-white/15 shadow-md"
+                                className="w-8 h-8 rounded-full object-cover border border-white/15 shadow-md cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // Open user info modal for this user
+                                  setSelectedUserId(msg.from)
+                                  setSelectedUserName(msg.fromName)
+                                  setSelectedUserAvatar(avatarSrc || '')
+                                  setShowUserInfoModal(true)
+                                }}
                                 onError={(e) => {
                                   ;(e.target as HTMLElement).style.display = 'none'
                                 }}
                               />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 border border-white/15 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                              <div 
+                                className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 border border-white/15 flex items-center justify-center text-white font-bold text-xs shadow-md cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // Open user info modal for this user
+                                  setSelectedUserId(msg.from)
+                                  setSelectedUserName(msg.fromName)
+                                  setSelectedUserAvatar(avatarSrc || '')
+                                  setShowUserInfoModal(true)
+                                }}
+                              >
                                 {initialLetter}
                               </div>
                             )
@@ -3335,17 +4209,31 @@ export default function ZaloChatView({
                                   })}
                             </span>
                             {msg.replied && (
-                              <span className="text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold">
-                                🤖 Auto-reply
+                              <span className="text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold flex items-center gap-0.5">
+                                <Bot className="w-2.5 h-2.5" />
+                                <span>Auto-reply</span>
                               </span>
+                            )}
+                            {/* 🆕 Message Status - Show checkmarks for sent messages */}
+                            {isMine && (
+                              <MessageStatus
+                                status={msg.status || 'sent'}
+                                seenBy={msg.seenBy}
+                                isGroup={activeConv?.type === 'Group'}
+                                timestamp={msg.timestamp}
+                              />
                             )}
                           </div>
                         )}
 
                         {/* Recalled Message View or Standard Message Bubble */}
-                        {recalledMsgIds.has(msg.id) || msg.isUndo || msg.content === 'Tin nhắn đã được thu hồi' ? (
+                        {recalledMsgIds.has(msg.id) || 
+                         msg.isUndo || 
+                         msg.content === 'Tin nhắn đã được thu hồi' || 
+                         msg.content === '🔄 Tin nhắn đã được thu hồi' || 
+                         (typeof msg.content === 'string' && msg.content.includes('thu hồi')) ? (
                           <div className="px-4 py-2 text-xs italic text-gray-300 bg-dark-200 border border-white/20 rounded-2xl flex items-center gap-2 shadow-md relative z-10">
-                            <span className="opacity-80 text-sm">🔄</span>
+                            <RefreshCw className="w-3 h-3 opacity-80" />
                             <span>Tin nhắn đã được thu hồi</span>
                           </div>
                         ) : (
@@ -3471,7 +4359,7 @@ export default function ZaloChatView({
                                             availableIds,
                                             totalMessages: activeMessages.length
                                           })
-                                          setSyncNotice('⚠️ Tin nhắn gốc không tìm thấy (có thể đã bị xóa hoặc nằm ngoài lịch sử)')
+                                          setSyncNotice('Tin nhắn gốc không tìm thấy (có thể đã bị xóa hoặc nằm ngoài lịch sử)')
                                         }
                                       }}
                                       className={`mb-2 p-2 rounded-lg border-l-4 cursor-pointer transition-all hover:opacity-80 hover:scale-[1.01] ${
@@ -3499,12 +4387,52 @@ export default function ZaloChatView({
                                   )}
 
                                   {/* Actual Message Content */}
-                                  {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url), mediaCache, setMediaCache)}
+                                  {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url), mediaCache, setMediaCache, msg.threadId)}
+                                  
+                                  {/* Reactions Display */}
+                                  {msg.reactions && msg.reactions.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1.5">
+                                      {/* Group reactions by icon */}
+                                      {(() => {
+                                        const grouped = msg.reactions.reduce((acc, r) => {
+                                          if (!acc[r.icon]) {
+                                            acc[r.icon] = { icon: r.icon, users: [] }
+                                          }
+                                          acc[r.icon].users.push(r.userName || r.userId)
+                                          return acc
+                                        }, {} as Record<string, { icon: string; users: string[] }>)
+                                        
+                                        return Object.values(grouped).map((group, idx) => (
+                                          <button
+                                            key={idx}
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              const rect = e.currentTarget.getBoundingClientRect()
+                                              setReactionPicker({
+                                                msg,
+                                                x: rect.left + rect.width / 2,
+                                                y: rect.top,
+                                              })
+                                            }}
+                                            className="group/reaction inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-dark-300/70 hover:bg-dark-200 border border-white/10 hover:border-primary/40 transition-all cursor-pointer"
+                                            title={group.users.join(', ')}
+                                          >
+                                            <span className="text-sm">{group.icon}</span>
+                                            {group.users.length > 1 && (
+                                              <span className="text-[10px] font-semibold text-gray-400 group-hover/reaction:text-primary transition-colors">
+                                                {group.users.length}
+                                              </span>
+                                            )}
+                                          </button>
+                                        ))
+                                      })()}
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })()}
 
-                            {/* Hover Action Buttons Toolbar (Trả lời, Chia sẻ, ...) */}
+                            {/* Hover Action Buttons Toolbar (Trả lời, Biểu cảm, Chia sẻ, ...) */}
                             <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center gap-1 bg-dark-400/90 backdrop-blur border border-white/10 px-1.5 py-1 rounded-full shadow-lg">
                               {/* 1. Trả lời */}
                               <button
@@ -3521,7 +4449,28 @@ export default function ZaloChatView({
                                 </span>
                               </button>
 
-                              {/* 2. Chia sẻ */}
+                              {/* 2. Biểu cảm */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const rect = e.currentTarget.getBoundingClientRect()
+                                  setReactionPicker({
+                                    msg,
+                                    x: rect.left + rect.width / 2,
+                                    y: rect.top,
+                                  })
+                                }}
+                                className="p-1 hover:bg-white/15 text-gray-300 hover:text-yellow-400 rounded-full transition-all relative group/btn"
+                                title="Biểu cảm"
+                              >
+                                <span className="text-sm">👍</span>
+                                <span className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover/btn:block bg-black/90 text-white text-[10px] px-2 py-0.5 rounded shadow whitespace-nowrap z-30 pointer-events-none">
+                                  Biểu cảm
+                                </span>
+                              </button>
+
+                              {/* 3. Chia sẻ */}
                               <button
                                 type="button"
                                 onClick={() => setForwardingMessage(msg)}
@@ -3574,6 +4523,31 @@ export default function ZaloChatView({
                   )
                 })
               )}
+
+              {/* Typing Indicator - Show when others are typing */}
+              {activeThreadId && typingUsers[activeThreadId] && typingUsers[activeThreadId].size > 0 && (
+                <div className="flex items-start gap-2 animate-fadeIn">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center text-white text-xs font-bold border-2 border-dark-300 shadow-lg">
+                    ⌨️
+                  </div>
+                  <div className="flex-1">
+                    <div className="inline-block px-4 py-2.5 rounded-2xl bg-dark-200/90 border border-sky-500/30 shadow-lg">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-sky-300 font-medium">
+                          {Array.from(typingUsers[activeThreadId]).join(', ')}
+                        </span>
+                        <span className="text-xs text-gray-400">đang nhập</span>
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
           )
@@ -3584,7 +4558,7 @@ export default function ZaloChatView({
               <div className="mx-4 mb-2 bg-dark-200/95 border border-sky-500/40 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn backdrop-blur-md">
                 <div className="px-3 py-2 bg-sky-950/80 border-b border-sky-500/20 text-[11px] font-bold text-sky-300 flex justify-between items-center">
                   <div className="flex items-center gap-1.5">
-                    <span>💬</span>
+                    <MessageSquare className="w-4 h-4" />
                     <span>Nhắc tên thành viên (@)</span>
                   </div>
                   <button
@@ -3693,7 +4667,9 @@ export default function ZaloChatView({
                   <button
                     type="button"
                     onClick={() => {
-                      selectedMsgIds.forEach((id) => handleDeleteLocalMessage(id))
+                      // Delete multiple messages
+                      const messagesToDelete = activeMessages.filter(m => selectedMsgIds.has(m.id))
+                      messagesToDelete.forEach((msg) => handleDeleteLocalMessage(msg))
                       setIsMultiSelectMode(false)
                       setSelectedMsgIds(new Set())
                     }}
@@ -3756,11 +4732,12 @@ export default function ZaloChatView({
                       <button
                         type="button"
                         onClick={() => setStickerTab('giphy')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
                           stickerTab === 'giphy' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        🎬 Giphy
+                        <Film className="w-3 h-3" />
+                        <span>Giphy</span>
                       </button>
                       <button
                         type="button"
@@ -4030,6 +5007,12 @@ export default function ZaloChatView({
                     onChange={(e) => {
                       const val = e.target.value
                       setInputText(val)
+                      
+                      // Send typing indicator when user types
+                      if (val.trim().length > 0) {
+                        sendTypingThrottled()
+                      }
+                      
                       // Auto-resize textarea height
                       const el = e.target
                       el.style.height = 'auto'
@@ -4106,11 +5089,11 @@ export default function ZaloChatView({
 
       {/* Right Information & Media Side Drawer */}
       {showRightInfoDrawer && activeConv && (
-        <div className="w-full md:w-80 bg-dark-200 border-l border-white/10 flex flex-col h-full animate-slideIn select-none z-40 overflow-hidden flex-shrink-0">
+        <div className="w-full md:w-80 bg-dark-200 border-l border-white/10 flex flex-col h-full animate-slideIn select-none z-40 flex-shrink-0">
           {/* Drawer Header */}
-          <div className="sticky top-0 p-4 bg-dark-300 border-b border-white/10 flex items-center justify-between z-50">
+          <div className="sticky top-0 p-4 bg-dark-300 border-b border-white/10 flex items-center justify-between z-50 flex-shrink-0">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <span>ℹ️</span>
+              <Info className="w-4 h-4" />
               <span>Thông tin hội thoại</span>
             </h3>
             <button
@@ -4122,7 +5105,7 @@ export default function ZaloChatView({
           </div>
 
           {/* Profile Overview */}
-          <div className="p-5 border-b border-white/10 flex flex-col items-center text-center space-y-3 bg-dark-300/40">
+          <div className="p-5 border-b border-white/10 flex flex-col items-center text-center space-y-3 bg-dark-300/40 flex-shrink-0">
             <div className="w-16 h-16 rounded-3xl bg-primary/20 p-0.5 shadow-lg relative">
               {activeConv.avatar ? (
                 <img src={activeConv.avatar} alt={activeConv.name} className="w-full h-full rounded-3xl object-cover" />
@@ -4173,9 +5156,25 @@ export default function ZaloChatView({
                     : 'bg-dark-300 border-white/10 text-gray-300 hover:text-white'
                 }`}
               >
-                <span>📌</span>
+                <Pin className="w-4 h-4" />
                 <span>{pinnedThreadIds.has(String(activeConv.threadId)) ? 'Bỏ ghim' : 'Ghim hội thoại'}</span>
               </button>
+
+              {/* QR Code Button - For 1:1 chats */}
+              {activeConv.type === 'User' && (
+                <button
+                  onClick={() => {
+                    setQrCodeUserId(String(activeConv.threadId))
+                    setQrCodeUserName(activeConv.name)
+                    setShowQRCodeModal(true)
+                  }}
+                  className="flex-1 py-2 px-2.5 rounded-xl text-xs font-bold border border-white/10 bg-dark-300 text-gray-300 hover:text-white hover:border-primary transition-all flex items-center justify-center gap-1.5"
+                  title="Xem mã QR Zalo"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Mã QR</span>
+                </button>
+              )}
 
               {activeConv.type === 'Group' && (
                 <button
@@ -4183,37 +5182,51 @@ export default function ZaloChatView({
                   className="py-2 px-2.5 rounded-xl text-xs font-bold border border-red-500/40 bg-red-600/20 text-red-300 hover:bg-red-600/30 transition-all flex items-center justify-center gap-1.5"
                   title="Rời nhóm Zalo trên Web & App"
                 >
-                  <span>🚪</span>
+                  <DoorOpen className="w-4 h-4" />
                   <span>Rời nhóm</span>
                 </button>
               )}
             </div>
           </div>
 
-          {/* Drawer Main Tabs */}
-          <div className="flex border-b border-white/10 bg-dark-300/60 p-1 text-xs font-bold">
+          {/* Scrollable Content Area - Includes all collapsible sections and tabs */}
+          <div className="flex-1 overflow-y-auto">
+            {/* Group Link Section (Only for Groups) */}
+            {activeConv.type === 'Group' && (
+              <GroupLinkSection groupId={String(activeConv.threadId)} />
+            )}
+
+            {/* Pending Members Section (Only for Groups) */}
+            {activeConv.type === 'Group' && (
+              <PendingMembersSection groupId={String(activeConv.threadId)} />
+            )}
+
+            {/* Drawer Main Tabs */}
+            <div className="flex border-b border-white/10 bg-dark-300/60 p-1 text-xs font-bold sticky top-0 z-10">
             {activeConv.type === 'Group' && (
               <button
                 onClick={() => setDrawerTab('members')}
-                className={`flex-1 py-2 rounded-xl transition-all text-center ${
+                className={`flex-1 py-2 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
                   drawerTab === 'members' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                👥 Thành viên ({drawerMembers.length})
+                <Users className="w-4 h-4" />
+                <span>Thành viên ({drawerMembers.length})</span>
               </button>
             )}
             <button
               onClick={() => setDrawerTab('media')}
-              className={`flex-1 py-2 rounded-xl transition-all text-center ${
+              className={`flex-1 py-2 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 ${
                 drawerTab === 'media' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
               }`}
             >
-              📁 Đa phương tiện
+              <Archive className="w-4 h-4" />
+              <span>Đa phương tiện</span>
             </button>
           </div>
 
-          {/* Drawer Content */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Tab Content Area */}
+          <div className="p-4 space-y-4">
             {drawerTab === 'members' && activeConv.type === 'Group' ? (
               <div className="space-y-3">
                 {/* Search member input */}
@@ -4240,9 +5253,31 @@ export default function ZaloChatView({
                       .map((mem) => (
                         <div key={mem.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-all">
                           {mem.avatar ? (
-                            <img src={mem.avatar} alt={mem.name} className="w-8 h-8 rounded-xl object-cover border border-white/10" />
+                            <img 
+                              src={mem.avatar} 
+                              alt={mem.name} 
+                              className="w-8 h-8 rounded-xl object-cover border border-white/10 cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all" 
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Open user info modal for this member
+                                setSelectedUserId(mem.id)
+                                setSelectedUserName(mem.name)
+                                setSelectedUserAvatar(mem.avatar)
+                                setShowUserInfoModal(true)
+                              }}
+                            />
                           ) : (
-                            <div className="w-8 h-8 rounded-xl bg-primary/20 text-primary font-bold text-xs flex items-center justify-center">
+                            <div 
+                              className="w-8 h-8 rounded-xl bg-primary/20 text-primary font-bold text-xs flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Open user info modal for this member
+                                setSelectedUserId(mem.id)
+                                setSelectedUserName(mem.name)
+                                setSelectedUserAvatar('')
+                                setShowUserInfoModal(true)
+                              }}
+                            >
                               {mem.name.charAt(0)}
                             </div>
                           )}
@@ -4286,27 +5321,30 @@ export default function ZaloChatView({
                       <div className="flex gap-1 text-[11px] bg-dark-300 p-1 rounded-xl border border-white/5 font-bold">
                         <button
                           onClick={() => setMediaSubTab('photos')}
-                          className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                          className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 ${
                             mediaSubTab === 'photos' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
                           }`}
                         >
-                          🖼️ Ảnh ({photos.length})
+                          <ImageIcon className="w-3 h-3" />
+                          <span>Ảnh ({photos.length})</span>
                         </button>
                         <button
                           onClick={() => setMediaSubTab('videos')}
-                          className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                          className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 ${
                             mediaSubTab === 'videos' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
                           }`}
                         >
-                          🎬 Video ({videos.length})
+                          <Film className="w-3 h-3" />
+                          <span>Video ({videos.length})</span>
                         </button>
                         <button
                           onClick={() => setMediaSubTab('links')}
-                          className={`flex-1 py-1.5 rounded-lg text-center transition-all ${
+                          className={`flex-1 py-1.5 rounded-lg text-center transition-all flex items-center justify-center gap-1 ${
                             mediaSubTab === 'links' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'
                           }`}
                         >
-                          🔗 Links ({links.length})
+                          <Link2 className="w-3 h-3" />
+                          <span>Links ({links.length})</span>
                         </button>
                       </div>
 
@@ -4390,6 +5428,7 @@ export default function ZaloChatView({
                 })()}
               </div>
             )}
+          </div>
           </div>
         </div>
       )}
@@ -4576,8 +5615,26 @@ export default function ZaloChatView({
             onClick={() => handleCopyMessage(contextMenu.msg.content)}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">📋</span>
+            <CopyIcon className="w-4 h-4" />
             <span className="font-medium">Copy tin nhắn</span>
+          </button>
+
+          {/* Thả biểu cảm */}
+          <button
+            type="button"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              setReactionPicker({
+                msg: contextMenu.msg,
+                x: rect.left + rect.width / 2,
+                y: rect.top,
+              })
+              setContextMenu(null)
+            }}
+            className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
+          >
+            <span className="text-base">👍</span>
+            <span className="font-medium">Thả biểu cảm</span>
           </button>
 
           {/* Ghim */}
@@ -4586,7 +5643,7 @@ export default function ZaloChatView({
             onClick={() => handlePinMessage(contextMenu.msg)}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">📌</span>
+            <Pin className="w-4 h-4" />
             <span className="font-medium">Ghim tin nhắn</span>
           </button>
 
@@ -4621,7 +5678,7 @@ export default function ZaloChatView({
             }}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">ℹ️</span>
+            <Info className="w-4 h-4" />
             <span className="font-medium">Xem chi tiết</span>
           </button>
 
@@ -4634,7 +5691,7 @@ export default function ZaloChatView({
             }}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">⚙️</span>
+            <Settings className="w-4 h-4" />
             <span className="font-medium">Tuỳ chọn khác</span>
           </button>
 
@@ -4647,7 +5704,7 @@ export default function ZaloChatView({
               onClick={() => handleRecallMessage(contextMenu.msg)}
               className="w-full px-3.5 py-2 text-left text-red-400 hover:bg-red-500/15 flex items-center gap-3 transition-colors font-semibold"
             >
-              <span className="text-base">🔄</span>
+              <RefreshCw className="w-4 h-4" />
               <span>Thu hồi</span>
             </button>
           )}
@@ -4655,15 +5712,116 @@ export default function ZaloChatView({
           {/* Xóa chỉ ở phía tôi */}
           <button
             type="button"
-            onClick={() => handleDeleteLocalMessage(contextMenu.msg.id)}
+            onClick={() => handleDeleteLocalMessage(contextMenu.msg)}
             className="w-full px-3.5 py-2 text-left text-red-400 hover:bg-red-500/15 flex items-center gap-3 transition-colors font-semibold"
           >
-            <span className="text-base">🗑️</span>
+            <Trash2 className="w-4 h-4" />
             <span>Xóa chỉ ở phía tôi</span>
           </button>
         </div>
         )
       })()}
+
+      {/* Add Friend Modal */}
+      {showAddFriendModal && (
+        <AddFriendModal onClose={() => setShowAddFriendModal(false)} />
+      )}
+
+      {/* Join Group Modal */}
+      {showJoinGroupModal && (
+        <JoinGroupModal 
+          onClose={() => setShowJoinGroupModal(false)}
+          onSuccess={(groupId) => {
+            console.log('✅ Joined group:', groupId)
+            // Refresh group list
+            handleManualSync()
+          }}
+        />
+      )}
+
+      {/* 🆕 Privacy Settings Modal */}
+      {showPrivacySettings && (
+        <PrivacySettings onClose={() => setShowPrivacySettings(false)} />
+      )}
+
+      {/* 🆕 QR Code Modal */}
+      {showQRCodeModal && qrCodeUserId && (
+        <QRCodeModal 
+          userId={qrCodeUserId}
+          userName={qrCodeUserName}
+          onClose={() => {
+            setShowQRCodeModal(false)
+            setQrCodeUserId(undefined)
+            setQrCodeUserName(undefined)
+          }}
+        />
+      )}
+
+      {/* 🆕 Friend Management Modal */}
+      <FriendManagementModal
+        isOpen={showFriendManagementModal}
+        onClose={() => setShowFriendManagementModal(false)}
+      />
+
+      {/* 🆕 Profile Management Modal */}
+      <ProfileManagementModal
+        isOpen={showProfileManagementModal}
+        onClose={() => setShowProfileManagementModal(false)}
+        currentUserInfo={userInfo}
+        onProfileUpdated={() => {
+          // Reload user info
+          fetch('/api/zalo/session')
+            .then(res => res.json())
+            .then(data => {
+              if (data.userInfo) {
+                // Update would need to come from parent - just close modal for now
+                console.log('Profile updated, should refresh user info')
+              }
+            })
+            .catch(console.error)
+        }}
+      />
+
+      {/* 🆕 User Info Modal (for other users) */}
+      <UserInfoModal
+        isOpen={showUserInfoModal}
+        onClose={() => setShowUserInfoModal(false)}
+        userId={selectedUserId}
+        userName={selectedUserName}
+        userAvatar={selectedUserAvatar}
+        onOpenChat={(threadId, name, avatar) => {
+          // Switch to chat with this user
+          setActiveThreadId(threadId)
+          localStorage.setItem('zalo_active_thread_id', threadId)
+          
+          // If conversation doesn't exist in list, create temporary one
+          const existingConv = conversations.find(c => c.threadId === threadId)
+          if (!existingConv) {
+            const tempConv = {
+              threadId,
+              name,
+              avatar,
+              lastMessage: '',
+              lastTime: new Date().toISOString(),
+              unread: 0,
+              type: 'User' as const
+            }
+            setConversations(prev => [tempConv, ...prev])
+          }
+        }}
+      />
+
+      {/* Reaction Picker */}
+      {reactionPicker && (
+        <ReactionPicker
+          onSelect={(icon) => {
+            handleAddReaction(reactionPicker.msg, icon)
+            setReactionPicker(null)
+          }}
+          onClose={() => setReactionPicker(null)}
+          position={{ x: reactionPicker.x, y: reactionPicker.y }}
+        />
+      )}
 
       {/* Change Background Modal */}
       {showBgModal && (
@@ -4671,8 +5829,8 @@ export default function ZaloChatView({
           <div className="bg-dark-200 border border-white/15 rounded-3xl shadow-2xl max-w-md w-full p-5 space-y-5 animate-scaleUp text-gray-200 select-none">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 text-xl shadow">
-                  🎨
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow">
+                  <Palette className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">Đổi hình nền trò chuyện</h3>
@@ -4707,7 +5865,8 @@ export default function ZaloChatView({
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent" />
                 <span className="relative z-10 text-xs font-bold text-white flex items-center gap-1">
-                  🖼️ background.png
+                  <ImageIcon className="w-3 h-3" />
+                  <span>background.png</span>
                 </span>
               </button>
 
@@ -4842,7 +6001,7 @@ export default function ZaloChatView({
                 }}
                 className="btn text-xs py-2 px-4 bg-white/10 hover:bg-white/20 text-gray-200 rounded-xl font-bold flex items-center gap-2 border border-white/15 transition-all cursor-pointer"
               >
-                <span>🔗</span>
+                <Link2 className="w-4 h-4" />
                 <span>Sao chép Link</span>
               </button>
             </div>

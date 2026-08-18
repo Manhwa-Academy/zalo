@@ -14,6 +14,7 @@ import AuthModal from '@/components/AuthModal'
 import Toast, { ToastProps } from '@/components/Toast'
 import BackupRestore from '@/components/BackupRestore'
 import AISettings from '@/components/AISettings'
+import AIPersonalSettings from '@/components/AIPersonalSettings'
 import ActiveDevices from '@/components/ActiveDevices'
 import ZaloAccountManager from '@/components/ZaloAccountManager'
 import ZaloImportModal from '@/components/ZaloImportModal'
@@ -22,6 +23,7 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [isCheckingZaloLogin, setIsCheckingZaloLogin] = useState(true) // Start as true to prevent premature render
+  const [hasCheckedZaloSession, setHasCheckedZaloSession] = useState(false) // 🆕 Track if we've completed the initial check
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
@@ -65,6 +67,13 @@ export default function Home() {
   })
   const [activeThreadIdFromNotif, setActiveThreadIdFromNotif] = useState<string | null>(null)
   const [showResetStatsModal, setShowResetStatsModal] = useState(false)
+  
+  // 🆕 Typing indicator state - threadId -> Set of user names currently typing
+  const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({})
+  const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({}) // Auto-clear typing after 5 seconds
+
+  // 🆕 EventSource ref for SSE cleanup
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   const notifiedMsgIdsRef = useRef<Set<string>>(new Set())
   const isInitialMountRef = useRef<boolean>(true)
@@ -80,6 +89,13 @@ export default function Home() {
     // Cleanup on unmount or page unload
     const cleanup = () => {
       clearTimeout(timer)
+      
+      // 🆕 Close EventSource connection
+      if (eventSourceRef.current) {
+        console.log('🧹 Cleanup: closing SSE connection')
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+      }
       
       // Clear login polling interval
       if (loginPollIntervalRef.current) {
@@ -132,14 +148,24 @@ export default function Home() {
     const checkAuth = async () => {
       try {
         console.log('🔍 [Frontend] Checking authentication...');
+        
+        // Add timeout to prevent infinite loading
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+        
         const res = await fetch('/api/auth/check', {
-          credentials: 'include', // Ensure cookies are sent
+          credentials: 'include',
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId)
+        
         const data = await res.json();
         console.log('🔍 [Frontend] Auth check result:', data);
         setIsAuthenticated(data.authenticated);
       } catch (error) {
         console.error('❌ [Frontend] Auth check failed:', error);
+        // If timeout or error, assume not authenticated
         setIsAuthenticated(false);
       } finally {
         setIsCheckingAuth(false);
@@ -170,15 +196,28 @@ export default function Home() {
     if (!isAuthenticated) {
       // Not authenticated, don't check Zalo login
       setIsCheckingZaloLogin(false)
+      setHasCheckedZaloSession(true) // 🆕 Mark as checked
       return
     }
 
     const initPage = async () => {
       setIsCheckingZaloLogin(true)
+      
+      // Add safety timeout - if initialization takes > 10s, force show UI
+      const safetyTimeout = setTimeout(() => {
+        console.warn('⚠️ [Init] Timeout reached, forcing UI to show')
+        setIsCheckingZaloLogin(false)
+      }, 10000) // 10 seconds max
+      
       try {
         // 1. Fetch user settings from database (includes AI settings)
         try {
-          const userSettingsRes = await fetch('/api/settings')
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 3000) // 3s timeout
+          
+          const userSettingsRes = await fetch('/api/settings', { signal: controller.signal })
+          clearTimeout(timeoutId)
+          
           if (userSettingsRes.ok) {
             const { settings } = await userSettingsRes.json()
             console.log('📋 Loaded user settings from database:', settings)
@@ -202,75 +241,107 @@ export default function Home() {
         }
 
         // 2. Fetch bot settings from file system (bot config)
-        const settingsRes = await fetch('/api/zalo/settings')
-        if (settingsRes.ok) {
-          const settings = await settingsRes.json()
-          console.log('📋 Loaded bot settings from file:', settings)
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 3000)
           
-          setBotEnabled(settings.enabled ?? false)
-          console.log('🔧 Bot enabled state set to:', settings.enabled ?? false)
+          const settingsRes = await fetch('/api/zalo/settings', { signal: controller.signal })
+          clearTimeout(timeoutId)
           
-          if (settings.autoReplyMessage) {
-            setAutoReplyMessage(settings.autoReplyMessage)
+          if (settingsRes.ok) {
+            const settings = await settingsRes.json()
+            console.log('📋 Loaded bot settings from file:', settings)
+            
+            setBotEnabled(settings.enabled ?? false)
+            console.log('🔧 Bot enabled state set to:', settings.enabled ?? false)
+            
+            if (settings.autoReplyMessage) {
+              setAutoReplyMessage(settings.autoReplyMessage)
+            }
+            if (settings.replyScope) {
+              setReplyScope(settings.replyScope)
+            }
+            if (Array.isArray(settings.whitelist)) {
+              setWhitelist(settings.whitelist)
+            }
+            if (typeof settings.useRandomPreset === 'boolean') {
+              setUseRandomPreset(settings.useRandomPreset)
+            }
+            if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
+              setPresetMessages(settings.presetMessages)
+            }
           }
-          if (settings.replyScope) {
-            setReplyScope(settings.replyScope)
-          }
-          if (Array.isArray(settings.whitelist)) {
-            setWhitelist(settings.whitelist)
-          }
-          if (typeof settings.useRandomPreset === 'boolean') {
-            setUseRandomPreset(settings.useRandomPreset)
-          }
-          if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
-            setPresetMessages(settings.presetMessages)
-          }
+        } catch (e) {
+          console.warn('⚠️ Could not load bot settings:', e)
         }
 
         // Fetch stats from server
         try {
-          const statsRes = await fetch('/api/zalo/stats')
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 2000)
+          
+          const statsRes = await fetch('/api/zalo/stats', { signal: controller.signal })
+          clearTimeout(timeoutId)
+          
           if (statsRes.ok) {
             const statsData = await statsRes.json()
             setStats(statsData)
           }
-        } catch (e) {}
-
-        // 2. Check Zalo login status from backend
-        const loginRes = await fetch('/api/zalo/login')
-        const loginData = await loginRes.json()
-        
-        console.log('🔍 [Init] Login status from backend:', {
-          loggedIn: loginData.loggedIn,
-          hasUserInfo: !!loginData.userInfo,
-          qrStatus: loginData.qrState?.status
-        })
-        
-        // IMPORTANT: Always logout Zalo when user authenticates
-        // This forces user to scan QR code every time they login with username/password
-        if (loginData.loggedIn) {
-          console.log('🔓 [Init] Found existing Zalo session, logging out to force QR scan...')
-          
-          try {
-            // Logout Zalo session
-            await fetch('/api/zalo/logout', { method: 'POST' })
-            console.log('✅ [Init] Zalo session cleared')
-          } catch (e) {
-            console.error('❌ [Init] Failed to logout Zalo:', e)
-          }
+        } catch (e) {
+          console.warn('⚠️ Could not load stats:', e)
         }
-        
-        // Always require QR login
-        console.log('ℹ️ [Init] User must scan QR code to login Zalo')
-        setIsLoggedIn(false)
-        isLoggedInRef.current = false
-        setUserInfo(null)
-        setQrState(null) // Clear QR state, will generate new one
+
+        // 3. Check Zalo login status from backend
+        try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s for Zalo check
+          
+          const loginRes = await fetch('/api/zalo/login', { signal: controller.signal })
+          clearTimeout(timeoutId)
+          
+          const loginData = await loginRes.json()
+          
+          console.log('🔍 [Init] Login status from backend:', {
+            loggedIn: loginData.loggedIn,
+            hasUserInfo: !!loginData.userInfo,
+            qrStatus: loginData.qrState?.status
+          })
+          
+          // If already logged in, restore session
+          if (loginData.loggedIn && loginData.userInfo) {
+            console.log('✅ [Init] Found existing Zalo session, restoring...')
+            setIsLoggedIn(true)
+            isLoggedInRef.current = true
+            setUserInfo(loginData.userInfo)
+            setQrState(null)
+            
+            // Start listener if not already running
+            setTimeout(() => {
+              if (!isListening) {
+                startListener()
+              }
+            }, 500)
+          } else {
+            console.log('ℹ️ [Init] No Zalo session, user needs to scan QR')
+            setIsLoggedIn(false)
+            isLoggedInRef.current = false
+            setUserInfo(null)
+            setQrState(loginData.qrState || null)
+          }
+        } catch (e) {
+          console.error('❌ [Init] Zalo login check failed:', e)
+          // On error, assume not logged in
+          setIsLoggedIn(false)
+          isLoggedInRef.current = false
+          setUserInfo(null)
+        }
         
       } catch (error) {
         console.error('Failed to initialize page state:', error)
       } finally {
+        clearTimeout(safetyTimeout)
         setIsCheckingZaloLogin(false)
+        setHasCheckedZaloSession(true) // 🆕 Mark as checked
       }
     }
 
@@ -463,6 +534,13 @@ export default function Home() {
     try {
       console.log('🎧 Starting listener...')
       
+      // 🆕 Close existing EventSource if any
+      if (eventSourceRef.current) {
+        console.log('🧹 Closing existing SSE connection...')
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+      }
+      
       // Retry logic if not ready
       let retries = 0
       const maxRetries = 3
@@ -480,7 +558,13 @@ export default function Home() {
           
           // Connect to SSE for real-time messages with auto-reconnect
           const connectSSE = () => {
+            // Close existing connection first
+            if (eventSourceRef.current) {
+              eventSourceRef.current.close()
+            }
+            
             const eventSource = new EventSource('/api/zalo/listener')
+            eventSourceRef.current = eventSource // Store reference for cleanup
             
             eventSource.onmessage = (event) => {
               try {
@@ -491,6 +575,28 @@ export default function Home() {
                   return
                 }
                 
+                // Handle typing events
+                if (message.type === 'typing') {
+                  console.log('⌨️ Received typing event:', message)
+                  handleTypingEvent(message)
+                  return
+                }
+                
+                // Handle seen events
+                if (message.type === 'seen') {
+                  console.log('👁️ Received seen event:', message)
+                  handleSeenEvent(message)
+                  return
+                }
+                
+                // 🆕 Handle reaction events
+                if (message.type === 'reaction') {
+                  console.log('👍 Received reaction event:', message)
+                  handleReactionEvent(message)
+                  return
+                }
+                
+                // Handle regular messages
                 handleNewMessage(message)
               } catch (e) {
                 console.error('Failed to parse message:', e)
@@ -501,6 +607,7 @@ export default function Home() {
               console.error('❌ SSE connection error, reconnecting in 3s...', error)
               setIsListening(false)
               eventSource.close()
+              eventSourceRef.current = null
               
               // Auto-reconnect after 3 seconds
               setTimeout(() => {
@@ -508,9 +615,6 @@ export default function Home() {
                 connectSSE()
               }, 3000)
             }
-            
-            // Store reference for cleanup
-            return eventSource
           }
           
           connectSSE()
@@ -666,6 +770,17 @@ export default function Home() {
   const handleNewMessage = (message: any) => {
     if (!message) return
 
+    // Skip self-sent messages from SSE since they're handled by optimistic updates
+    // This prevents duplicates when the SSE broadcast arrives before API response
+    if (message.isSelf || message.isSelfMessage || message.from === 'Self') {
+      console.log('⏭️ [SSE] Skipping self-sent message (handled by optimistic update)', {
+        id: message.id,
+        msgId: message.msgId,
+        cliMsgId: message.cliMsgId
+      })
+      return
+    }
+
     const msgIdKey = String(message.id || message.msgId || message.cliMsgId || `${message.threadId}_${message.content}_${message.timestamp}`)
     const msgTime = message.timestamp ? new Date(message.timestamp).getTime() : Date.now()
     const isRecent = Math.abs(Date.now() - msgTime) < 20000
@@ -721,6 +836,183 @@ export default function Home() {
     }))
 
     setLastActivity(new Date().toLocaleTimeString('vi-VN'))
+  }
+
+  // 🆕 Handle typing events from SSE
+  const handleTypingEvent = (event: any) => {
+    const { threadId, userId, userName, isTyping } = event
+    
+    if (!threadId || !userName) return
+    
+    console.log(`⌨️ [Typing] ${userName} ${isTyping ? 'started' : 'stopped'} typing in ${threadId}`)
+    
+    setTypingUsers((prev) => {
+      const updated = { ...prev }
+      
+      if (isTyping) {
+        // Add user to typing set
+        if (!updated[threadId]) {
+          updated[threadId] = new Set()
+        }
+        updated[threadId].add(userName)
+        
+        // Auto-clear after 5 seconds if no update
+        if (typingTimeoutsRef.current[`${threadId}_${userId}`]) {
+          clearTimeout(typingTimeoutsRef.current[`${threadId}_${userId}`])
+        }
+        
+        typingTimeoutsRef.current[`${threadId}_${userId}`] = setTimeout(() => {
+          setTypingUsers((current) => {
+            const cleared = { ...current }
+            if (cleared[threadId]) {
+              cleared[threadId].delete(userName)
+              if (cleared[threadId].size === 0) {
+                delete cleared[threadId]
+              }
+            }
+            return cleared
+          })
+          delete typingTimeoutsRef.current[`${threadId}_${userId}`]
+        }, 5000)
+      } else {
+        // Remove user from typing set
+        if (updated[threadId]) {
+          updated[threadId].delete(userName)
+          if (updated[threadId].size === 0) {
+            delete updated[threadId]
+          }
+        }
+        
+        // Clear timeout
+        if (typingTimeoutsRef.current[`${threadId}_${userId}`]) {
+          clearTimeout(typingTimeoutsRef.current[`${threadId}_${userId}`])
+          delete typingTimeoutsRef.current[`${threadId}_${userId}`]
+        }
+      }
+      
+      return updated
+    })
+  }
+
+  // 🆕 Handle seen/read receipt events from SSE
+  const handleSeenEvent = (event: any) => {
+    const { threadId, userId, userName, messageIds, timestamp: seenAt, avatar } = event
+    
+    if (!threadId) return
+    
+    console.log(`👁️ [Seen] ${userName} read ${messageIds?.length || 0} messages in ${threadId}`)
+    
+    // Update message status to 'seen' and add to seenBy list
+    setMessageLogs((prev) => {
+      return prev.map((msg) => {
+        // Check if this message was read
+        const wasRead = messageIds && messageIds.some((id: string) => 
+          String(msg.msgId) === String(id) || 
+          String(msg.cliMsgId) === String(id) ||
+          String(msg.id) === String(id)
+        )
+        
+        if (wasRead && String(msg.threadId) === String(threadId)) {
+          // Add user to seenBy list (avoid duplicates)
+          const seenBy = msg.seenBy || []
+          const alreadySeen = seenBy.some((s: any) => s.userId === userId)
+          
+          if (!alreadySeen) {
+            return {
+              ...msg,
+              status: 'seen' as const,
+              seenBy: [
+                ...seenBy,
+                {
+                  userId,
+                  userName,
+                  avatar: avatar || '',
+                  seenAt: seenAt || Date.now()
+                }
+              ]
+            }
+          }
+          
+          // Just update status if already in list
+          return { ...msg, status: 'seen' as const }
+        }
+        
+        return msg
+      })
+    })
+  }
+
+  // 🆕 Handle reaction events from SSE
+  const handleReactionEvent = (event: any) => {
+    const { msgId, cliMsgId, threadId, userId, userName, icon } = event
+    
+    if (!msgId && !cliMsgId) return
+    
+    console.log(`👍 [Reaction] ${userName} reacted ${icon} to message in ${threadId}`)
+    
+    // Helper to convert Zalo reaction codes to emoji
+    const getReactionEmoji = (code: string): string => {
+      const mapping: Record<string, string> = {
+        '/-heart': '❤️',
+        '/-strong': '👍',
+        '/-weak': '👎',
+        ':>': '😂',
+        ':o': '😮',
+        ':--((': '😢',
+        ';--/': '😞',
+        ':-h': '😠',
+        ':-*': '😘',
+        ":')'": '😭',
+        ';xx': '🥰',
+        ';-)': '😉',
+        'x-)': '😎',
+        '/-rose': '🌹',
+        '/-break': '💔',
+        '/-li': '☀️',
+        '/-bd': '🎂',
+        '/-bome': '💣',
+        '/-ok': '👌',
+        '/-v': '✌️',
+        '/-thanks': '🙏',
+        '/-punch': '👊',
+        '/-share': '🤝',
+        '_()_': '🙇',
+        '/-no': '🚫',
+        '/-bad': '👎',
+        '/-loveu': '💌',
+        '/-beer': '🍺',
+      }
+      return mapping[code] || code
+    }
+    
+    const displayIcon = getReactionEmoji(icon)
+    
+    // Update message with reaction
+    setMessageLogs((prev) => {
+      return prev.map((msg) => {
+        // Check if this is the target message
+        const isTarget = 
+          (msgId && (String(msg.msgId) === String(msgId) || String(msg.id) === String(msgId))) ||
+          (cliMsgId && (String(msg.cliMsgId) === String(cliMsgId) || String(msg.id) === String(cliMsgId)))
+        
+        if (isTarget && String(msg.threadId) === String(threadId)) {
+          // Add/update reaction
+          const reactions = msg.reactions || []
+          
+          // Remove existing reaction from this user
+          const filteredReactions = reactions.filter((r: any) => r.userId !== userId)
+          
+          // Add new reaction if icon provided (empty icon = remove)
+          const newReactions = icon 
+            ? [...filteredReactions, { userId, userName, icon: displayIcon, count: 1 }]
+            : filteredReactions
+          
+          return { ...msg, reactions: newReactions }
+        }
+        
+        return msg
+      })
+    })
   }
 
   // Sync settings helper (for bot config - saved to file)
@@ -997,8 +1289,9 @@ export default function Home() {
         </div>
         
         {!isLoggedIn ? (
-          isCheckingZaloLogin ? (
-            // Show loading while checking Zalo session
+          // Only show login form if we've completed the session check
+          !hasCheckedZaloSession || isCheckingZaloLogin ? (
+            // Show loading while checking Zalo session on initial load
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center p-8 bg-dark-200/80 rounded-2xl border border-dark-100 backdrop-blur shadow-2xl">
                 <div className="w-12 h-12 border-4 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -1007,6 +1300,7 @@ export default function Home() {
               </div>
             </div>
           ) : (
+            // Show login form ONLY when: not logged in AND finished checking AND no session found
             <LoginSection 
               isLoading={isLoading}
               qrState={qrState}
@@ -1072,6 +1366,7 @@ export default function Home() {
                 }}
                 navigateToThreadId={activeThreadIdFromNotif}
                 onNavigateToThreadHandled={() => setActiveThreadIdFromNotif(null)}
+                typingUsers={typingUsers}
               />
             )}
 
@@ -1117,6 +1412,9 @@ export default function Home() {
                   onAIMaxLengthChange={handleAIMaxLengthChange}
                   onAITriggerModeChange={handleAITriggerModeChange}
                 />
+                
+                {/* AI Personal Assistant Settings */}
+                <AIPersonalSettings />
                 
                 {/* Zalo Account Import/Export */}
                 <ZaloAccountManager

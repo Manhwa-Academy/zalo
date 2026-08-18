@@ -108,11 +108,57 @@ export async function POST(request: Request) {
     } 
     // 3. Send Text Message
     else {
-      sendRes = await zaloApi.sendMessage(
-        { msg: message },
-        threadId,
-        threadType
-      )
+      // 🆕 Check if message contains URL and parse link preview
+      const urlRegex = /(https?:\/\/[^\s]+)/gi
+      const urls = message.match(urlRegex)
+      
+      if (urls && urls.length > 0 && typeof zaloApi.parseLink === 'function') {
+        try {
+          console.log(`🔗 [Send Message] Detected URL, parsing link preview: ${urls[0]}`)
+          const linkData = await zaloApi.parseLink(urls[0])
+          
+          if (linkData?.data) {
+            console.log(`✅ [Send Message] Link preview parsed:`, {
+              title: linkData.data.title?.slice(0, 50),
+              thumb: linkData.data.thumb?.slice(0, 50)
+            })
+            
+            // Send message with link preview data
+            sendRes = await zaloApi.sendMessage(
+              {
+                msg: message,
+                quote: quote,
+                linkData: linkData.data // Include parsed link preview
+              },
+              threadId,
+              threadType
+            )
+          } else {
+            // Fallback: Send as normal text if parse failed
+            console.warn(`⚠️ [Send Message] Link parse failed, sending as text`)
+            sendRes = await zaloApi.sendMessage(
+              { msg: message, quote: quote },
+              threadId,
+              threadType
+            )
+          }
+        } catch (error) {
+          console.error(`❌ [Send Message] Link parse error:`, error)
+          // Fallback: Send as normal text
+          sendRes = await zaloApi.sendMessage(
+            { msg: message, quote: quote },
+            threadId,
+            threadType
+          )
+        }
+      } else {
+        // Normal text message (no URL detected)
+        sendRes = await zaloApi.sendMessage(
+          { msg: message, quote: quote },
+          threadId,
+          threadType
+        )
+      }
     }
 
     const rawMsgData = sendRes?.message?.data || sendRes?.message || sendRes?.data || sendRes || {}

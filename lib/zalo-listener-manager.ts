@@ -395,7 +395,7 @@ async function shouldAutoReply(threadId: string, isGroupMsg: boolean): Promise<b
   return true
 }
 
-async function getReplyText(messageContent?: string, senderName?: string, threadId?: string): Promise<string> {
+async function getReplyText(messageContent?: string, senderName?: string, threadId?: string, senderId?: string, quote?: any): Promise<string> {
   const settings = await getBotSettingsAsync()
   
   console.log(`🤖 [AI Reply] Settings:`, {
@@ -403,6 +403,89 @@ async function getReplyText(messageContent?: string, senderName?: string, thread
     aiTriggerMode: settings.aiTriggerMode,
     messageContent: messageContent?.substring(0, 50)
   })
+  
+  // ========================================
+  // 🆕 AI PERSONAL ASSISTANT CHECK
+  // ========================================
+  // Check if this message should trigger AI personal assistant
+  // (when user is mentioned or replied to)
+  
+  if (settings.aiEnabled && messageContent && threadId) {
+    try {
+      const { shouldAIReplyForUser, generateAIReplyForUser, buildEnhancedConversationHistory } = await import('./ai-reply')
+      const pool = (await import('./postgres')).default
+      const { getCurrentUserId } = await import('./multi-user-zalo')
+      
+      const userId = await getCurrentUserId()
+      
+      if (userId && pool) {
+        // Load user's AI profile
+        const profileResult = await pool.query(
+          'SELECT * FROM user_ai_profiles WHERE user_id = $1',
+          [userId]
+        )
+        
+        if (profileResult.rows.length > 0) {
+          const profile = profileResult.rows[0]
+          const userProfile = {
+            userId: profile.user_id,
+            zaloUserId: profile.zalo_user_id || '',
+            zaloDisplayName: profile.zalo_display_name || '',
+            nicknames: profile.nicknames || [],
+            aiReplyMode: profile.ai_reply_mode || 'mention_only',
+            contextLength: profile.context_length || 20,
+            rememberContext: profile.remember_context !== false,
+          }
+          
+          console.log(`👤 [AI Personal] Checking if should reply for: ${userProfile.zaloDisplayName}`)
+          
+          // Check if should reply on behalf of user
+          const shouldReply = await shouldAIReplyForUser(
+            messageContent,
+            senderName || '',
+            senderId || '',
+            userProfile,
+            quote
+          )
+          
+          if (shouldReply) {
+            console.log(`✅ [AI Personal] Replying on behalf of ${userProfile.zaloDisplayName}`)
+            
+            // Build enhanced conversation history
+            const conversationHistory = buildEnhancedConversationHistory(
+              messageQueue,
+              threadId,
+              userProfile.contextLength
+            )
+            
+            // Generate AI reply on behalf of user
+            const aiResult = await generateAIReplyForUser(
+              messageContent,
+              senderName || 'Người dùng',
+              userProfile,
+              conversationHistory,
+              settings,
+              undefined // TODO: Add media content if needed
+            )
+            
+            if (!aiResult.error && aiResult.reply) {
+              console.log(`✅ [AI Personal] Generated reply: "${aiResult.reply.substring(0, 80)}..."`)
+              return aiResult.reply
+            } else {
+              console.error(`❌ [AI Personal] Error:`, aiResult.error)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`❌ [AI Personal] Exception:`, error)
+      // Continue to normal AI reply if personal assistant fails
+    }
+  }
+  
+  // ========================================
+  // NORMAL AI REPLY (existing logic)
+  // ========================================
   
   // Check if AI is enabled
   if (settings.aiEnabled && messageContent) {
@@ -501,6 +584,11 @@ async function getReplyText(messageContent?: string, senderName?: string, thread
 export function attachListenerToApi(zaloApi: any) {
   if (!zaloApi || !zaloApi.listener) return
 
+  // 🆕 Increase max listeners to prevent warning
+  if (typeof zaloApi.listener.setMaxListeners === 'function') {
+    zaloApi.listener.setMaxListeners(20) // Increase from default 10 to 20
+  }
+
   // Always force selfListen = true on both listener and context
   zaloApi.listener.selfListen = true
   if (zaloApi.ctx?.options) {
@@ -510,6 +598,8 @@ export function attachListenerToApi(zaloApi: any) {
   // Remove existing listeners to prevent duplicate or stale HMR callbacks
   zaloApi.listener.removeAllListeners('message')
   zaloApi.listener.removeAllListeners('undo')
+  zaloApi.listener.removeAllListeners('typing')
+  zaloApi.listener.removeAllListeners('read_receipt')
 
   zaloApi.listener.on('undo', (undoData: any) => {
     
@@ -542,6 +632,50 @@ export function attachListenerToApi(zaloApi: any) {
       if (tId && (mId || cId)) {
         markMessageUndone(mId, cId, tId)
       }
+    }
+  })
+
+  // 🆕 Listen for reaction events
+  zaloApi.listener.on('reaction', (reactionData: any) => {
+    console.log('👍 [Listener] Received reaction event:', reactionData)
+    
+    try {
+      // Extract reaction data
+      const msgId = String(reactionData?.msgId || reactionData?.data?.msgId || '')
+      const cliMsgId = String(reactionData?.cliMsgId || reactionData?.data?.cliMsgId || '')
+      const threadId = String(reactionData?.threadId || reactionData?.data?.threadId || '')
+      const userId = String(reactionData?.userId || reactionData?.data?.userId || reactionData?.uidFrom || '')
+      const userName = reactionData?.userName || reactionData?.data?.userName || reactionData?.dName || ''
+      const icon = reactionData?.icon || reactionData?.data?.icon || reactionData?.react || ''
+      
+      if (!msgId && !cliMsgId) {
+        console.warn('⚠️ [Listener] Reaction event missing message ID')
+        return
+      }
+      
+      // Broadcast reaction update to all SSE clients
+      const reactionUpdate = {
+        type: 'reaction',
+        msgId,
+        cliMsgId,
+        threadId,
+        userId,
+        userName,
+        icon,
+        timestamp: Date.now(),
+      }
+      
+      sseClients.forEach((client) => {
+        try {
+          client.controller.enqueue(`data: ${JSON.stringify(reactionUpdate)}\n\n`)
+        } catch (e) {
+          console.error('Failed to send reaction update to client:', e)
+        }
+      })
+      
+      console.log('✅ [Listener] Broadcasted reaction update to clients')
+    } catch (error) {
+      console.error('❌ [Listener] Error processing reaction event:', error)
     }
   })
 
@@ -708,6 +842,32 @@ export function attachListenerToApi(zaloApi: any) {
           size: fileSize,
           caption: rawContent.caption || rawContent.description || '',
         })
+      } else if (
+        rawContent.type === 'call' ||
+        rawContent.type === 'audio_call' ||
+        rawContent.type === 'video_call' ||
+        rawContent.type === 'voice_call' ||
+        rawContent.callType ||
+        rawContent.duration !== undefined ||
+        rawContent.status ||
+        (rawContent.msg && (rawContent.msg.includes('cuộc gọi') || rawContent.msg.includes('phút') || rawContent.msg.includes('giây')))
+      ) {
+        // Call bubble message - preserve call metadata
+        const callType = rawContent.callType || rawContent.type || 'call'
+        const duration = rawContent.duration || 0
+        const status = rawContent.status || 'completed'
+        const direction = rawContent.direction || (message.isSelf ? 'outgoing' : 'incoming')
+        const msg = rawContent.msg || rawContent.message || rawContent.text || ''
+        
+        rawContent = JSON.stringify({
+          type: 'call',
+          callType: callType,
+          duration: duration,
+          status: status,
+          direction: direction,
+          message: msg,
+          threadId: targetThreadId, // Save threadId for "Gọi lại" button
+        })
       } else {
         try {
           rawContent = JSON.stringify(rawContent)
@@ -717,6 +877,41 @@ export function attachListenerToApi(zaloApi: any) {
       }
     } else if (typeof rawContent !== 'string') {
       rawContent = String(rawContent || '')
+    }
+
+    // Check if rawContent is a call message in text format
+    // Format: "Cuộc gọi [thoại/video] [đi/đến]\n0 phút 10 giây" or similar
+    if (typeof rawContent === 'string' && 
+        (rawContent.includes('Cuộc gọi') || rawContent.includes('cuộc gọi')) &&
+        (rawContent.includes('phút') || rawContent.includes('giây'))) {
+      
+      // Parse the text to extract call information
+      const isVideo = rawContent.includes('video')
+      const isOutgoing = rawContent.includes('đi')
+      const isIncoming = rawContent.includes('đến')
+      
+      // Extract duration - look for pattern like "0 phút 10 giây" or "30 giây"
+      let duration = 0
+      const minuteMatch = rawContent.match(/(\d+)\s*phút/)
+      const secondMatch = rawContent.match(/(\d+)\s*giây/)
+      
+      if (minuteMatch) {
+        duration += parseInt(minuteMatch[1]) * 60
+      }
+      if (secondMatch) {
+        duration += parseInt(secondMatch[1])
+      }
+      
+      // Convert to structured JSON
+      rawContent = JSON.stringify({
+        type: 'call',
+        callType: isVideo ? 'video_call' : 'audio_call',
+        duration: duration,
+        direction: isOutgoing ? 'outgoing' : (isIncoming ? 'incoming' : 'outgoing'),
+        status: duration > 0 ? 'completed' : 'missed',
+        message: '', // Original message already parsed
+        threadId: targetThreadId, // Save threadId for "Gọi lại" button
+      })
     }
 
     // If rawContent is just a filename (e.g., "giphy_xxx.gif"), try to reconstruct with cached URL
@@ -813,7 +1008,7 @@ export function attachListenerToApi(zaloApi: any) {
           // rawContent is plain text
         }
         
-        const replyText = await getReplyText(textContent, senderName, targetThreadId)
+        const replyText = await getReplyText(textContent, senderName, targetThreadId, senderId, quote)
         const threadTypeParam = isGroupMsg ? 1 : 0
         await zaloApi.sendMessage(
           { msg: replyText },
@@ -835,6 +1030,154 @@ export function attachListenerToApi(zaloApi: any) {
     } catch (e) {}
 
     broadcastMessage(messageData)
+  })
+
+  // 🆕 Typing event listener - broadcast typing indicators
+  zaloApi.listener.on('typing', (typingData: any) => {
+    console.log('⌨️ [Listener] Received typing event:', typingData)
+    
+    try {
+      // Parse typing event
+      const threadId = String(typingData.threadId || typingData.idFrom || '')
+      const userId = String(typingData.userId || typingData.uidFrom || '')
+      const userName = typingData.userName || typingData.displayName || typingData.dName || `User ${userId.slice(-4)}`
+      const isTyping = typingData.isTyping !== false // Default to true
+      
+      if (!threadId) {
+        console.warn('⚠️ [Typing] Missing threadId, skipping')
+        return
+      }
+      
+      // Broadcast typing event to all SSE clients
+      const typingEvent = {
+        type: 'typing',
+        threadId,
+        userId,
+        userName,
+        isTyping,
+        timestamp: Date.now(),
+      }
+      
+      sseClients.forEach((client) => {
+        try {
+          client.controller.enqueue(`data: ${JSON.stringify(typingEvent)}\n\n`)
+        } catch (e) {
+          console.error('Failed to send typing event to client:', e)
+        }
+      })
+      
+      console.log(`✅ [Typing] Broadcasted: ${userName} ${isTyping ? 'is typing' : 'stopped typing'} in ${threadId}`)
+    } catch (error) {
+      console.error('❌ [Typing] Error processing typing event:', error)
+    }
+  })
+
+  // 🆕 Read receipt (seen) event listener - broadcast seen events
+  zaloApi.listener.on('read_receipt', (seenData: any) => {
+    console.log('👁️ [Listener] Received seen event:', seenData)
+    
+    try {
+      // Check if this is a Group or User seen event
+      const isGroup = seenData.type === 1 || seenData.type === 'Group' || !!seenData.data?.seenUids || !!seenData.seenUids
+      
+      if (isGroup) {
+        // ========================================
+        // GROUP SEEN MESSAGE
+        // ========================================
+        const groupId = String(seenData.data?.groupId || seenData.threadId || seenData.groupId || '')
+        const msgId = String(seenData.data?.msgId || seenData.msgId || '')
+        const seenUids = seenData.data?.seenUids || seenData.seenUids || []
+        
+        if (!groupId || !msgId) {
+          console.warn('⚠️ [Seen] Missing groupId or msgId for group seen event')
+          return
+        }
+        
+        console.log(`👥 [Seen] Group event: ${seenUids.length} users saw message ${msgId} in group ${groupId}`)
+        
+        // Fetch user info for all seen users (if we don't have their names yet)
+        const getUsersInfo = async () => {
+          try {
+            if (seenUids.length > 0 && typeof zaloApi.getUserInfo === 'function') {
+              const uRes = await zaloApi.getUserInfo(seenUids.slice(0, 30)) // Batch max 30
+              const uData = uRes?.data || uRes
+              
+              const seenBy = seenUids.map((uid: string) => {
+                const userItem = uData?.[uid] || uData?.[`${uid}_0`]
+                return {
+                  userId: uid,
+                  userName: userItem?.displayName || userItem?.zaloName || userItem?.name || `User ${uid.slice(-4)}`,
+                  avatar: userItem?.avatar || userItem?.avatar_240 || userItem?.avatar_120 || '',
+                  seenAt: Date.now()
+                }
+              })
+              
+              // Broadcast group seen event to all SSE clients
+              const seenEvent = {
+                type: 'group_seen',
+                threadId: groupId,
+                msgId,
+                seenBy,
+                timestamp: Date.now(),
+              }
+              
+              sseClients.forEach((client) => {
+                try {
+                  client.controller.enqueue(`data: ${JSON.stringify(seenEvent)}\n\n`)
+                } catch (e) {
+                  console.error('Failed to send group seen event to client:', e)
+                }
+              })
+              
+              console.log(`✅ [Seen] Broadcasted group seen: ${seenBy.length} users read message ${msgId}`)
+            }
+          } catch (error) {
+            console.error('❌ [Seen] Error fetching users info for group seen:', error)
+          }
+        }
+        
+        getUsersInfo() // Run async
+        
+      } else {
+        // ========================================
+        // USER (1:1) SEEN MESSAGE
+        // ========================================
+        const threadId = String(seenData.data?.idTo || seenData.threadId || seenData.idFrom || '')
+        const userId = String(seenData.data?.idTo || seenData.userId || seenData.uidFrom || '')
+        const msgId = String(seenData.data?.msgId || seenData.msgId || '')
+        const realMsgId = String(seenData.data?.realMsgId || seenData.realMsgId || msgId)
+        
+        if (!threadId) {
+          console.warn('⚠️ [Seen] Missing threadId for user seen event')
+          return
+        }
+        
+        console.log(`👤 [Seen] User event: User ${userId} saw message ${msgId} in thread ${threadId}`)
+        
+        // Broadcast user seen event to all SSE clients
+        const seenEvent = {
+          type: 'user_seen',
+          threadId,
+          userId,
+          msgId,
+          realMsgId,
+          timestamp: Date.now(),
+        }
+        
+        sseClients.forEach((client) => {
+          try {
+            client.controller.enqueue(`data: ${JSON.stringify(seenEvent)}\n\n`)
+          } catch (e) {
+            console.error('Failed to send user seen event to client:', e)
+          }
+        })
+        
+        console.log(`✅ [Seen] Broadcasted user seen: ${userId} read message in ${threadId}`)
+      }
+      
+    } catch (error) {
+      console.error('❌ [Seen] Error processing seen event:', error)
+    }
   })
 
   // Track reconnection state to prevent duplicate reconnects
