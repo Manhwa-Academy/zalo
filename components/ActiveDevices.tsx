@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import ConfirmModal from './ConfirmModal'
 
 interface Device {
   id: string
@@ -23,6 +24,10 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Modal states
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [deviceToLogout, setDeviceToLogout] = useState<string | null>(null)
 
   const loadDevices = async () => {
     setLoading(true)
@@ -57,12 +62,17 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
   }, [])
 
   const handleLogoutDevice = async (deviceId: string) => {
-    if (!confirm('Bạn có chắc muốn đăng xuất thiết bị này?')) {
-      return
-    }
+    setDeviceToLogout(deviceId)
+    setShowLogoutModal(true)
+  }
+
+  const confirmLogoutDevice = async () => {
+    if (!deviceToLogout) return
+    
+    setShowLogoutModal(false)
 
     try {
-      const response = await fetch(`/api/auth/sessions?id=${deviceId}`, {
+      const response = await fetch(`/api/auth/sessions?id=${deviceToLogout}`, {
         method: 'DELETE',
       })
       
@@ -73,13 +83,15 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
         await loadDevices()
         
         if (onLogoutDevice) {
-          onLogoutDevice(deviceId)
+          onLogoutDevice(deviceToLogout)
         }
       } else {
         alert(data.error || 'Failed to logout device')
       }
     } catch (err) {
       alert('Network error')
+    } finally {
+      setDeviceToLogout(null)
     }
   }
 
@@ -244,6 +256,22 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
           🔄 Làm mới
         </button>
       </div>
+
+      {/* Logout Device Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showLogoutModal}
+        title="Đăng xuất thiết bị này?"
+        message="Thiết bị này sẽ bị đăng xuất và cần phải đăng nhập lại."
+        type="warning"
+        confirmText="Đăng xuất"
+        cancelText="Hủy"
+        showCancel={true}
+        onConfirm={confirmLogoutDevice}
+        onCancel={() => {
+          setShowLogoutModal(false)
+          setDeviceToLogout(null)
+        }}
+      />
     </div>
   )
 }

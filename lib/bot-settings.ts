@@ -4,6 +4,7 @@ import { dataFilePath } from './data-dir'
 export interface BotSettings {
   enabled: boolean
   autoReplyMessage: string
+  replyDelay: number // Delay in milliseconds before auto-reply (e.g., 5000 = 5 seconds)
   replyScope: 'all' | 'user_only' | 'group_only' | 'whitelist'
   whitelist: string[]
   blacklist: string[]
@@ -14,6 +15,8 @@ export interface BotSettings {
   aiPersonality?: string
   aiMaxLength?: number
   aiTriggerMode?: string
+  geminiApiKey?: string
+  geminiModel?: string
 }
 
 const SETTINGS_FILE = dataFilePath('.zalo-settings.json')
@@ -29,6 +32,7 @@ const DEFAULT_PRESETS = [
 const DEFAULT_SETTINGS: BotSettings = {
   enabled: false,
   autoReplyMessage: 'Xin chào! Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể. 🙏',
+  replyDelay: 5000, // Default 5 seconds (in milliseconds)
   replyScope: 'all',
   whitelist: [],
   blacklist: [],
@@ -39,6 +43,8 @@ const DEFAULT_SETTINGS: BotSettings = {
   aiPersonality: 'friendly',
   aiMaxLength: 200,
   aiTriggerMode: 'smart',
+  geminiApiKey: '',
+  geminiModel: 'gemini-3.1-flash-lite',
 }
 
 export function getBotSettings(): BotSettings {

@@ -74,6 +74,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
     }
 
+    // 🆕 Get Zalo user ID for multi-device sync
+    const zaloUserId = typeof zaloApi.getOwnId === 'function' 
+      ? String(zaloApi.getOwnId()) 
+      : ''
+    console.log('🔑 [Messages] Zalo User ID:', zaloUserId)
+
     // Ensure imageMetadataGetter is injected into active zaloApi context
     const ctx = typeof zaloApi.getContext === 'function' ? zaloApi.getContext() : (zaloApi.ctx || zaloApi.context)
     if (ctx) {
@@ -243,7 +249,8 @@ export async function POST(request: Request) {
       quote: quote || undefined, // Add quote data if present
     }
 
-    broadcastMessage(sentMsg)
+    // 🆕 Pass zaloUserId for multi-device sync
+    broadcastMessage(sentMsg, zaloUserId)
 
     console.log('📢 [Send Message] Broadcasting message to SSE clients:', {
       id: sentMsg.id,

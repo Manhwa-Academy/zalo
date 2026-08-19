@@ -45,6 +45,10 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
   })
   const [isLoadingSettings, setIsLoadingSettings] = useState(true)
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  
+  // Custom delay state
+  const [customDelayMode, setCustomDelayMode] = useState(false)
+  const [customDelayValue, setCustomDelayValue] = useState<string>('')
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -66,6 +70,15 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
         if (data.success && data.settings) {
           setSettings(data.settings)
           console.log('✅ [Header] Loaded settings from database:', data.settings)
+          
+          // Check if replyDelay is a custom value (not in default options)
+          const defaultDelays = [0, 2, 5, 10, 15, 20, 30]
+          const replyDelay = data.settings.replyDelay || 2
+          if (!defaultDelays.includes(replyDelay)) {
+            // Custom delay detected
+            setCustomDelayMode(true)
+            setCustomDelayValue(replyDelay.toString())
+          }
         }
       }
     } catch (error) {
@@ -362,18 +375,93 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-white">Độ trễ phản hồi</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Thời gian chờ trước khi bot trả lời</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Thời gian chờ trước khi bot trả lời
+                        {customDelayMode && customDelayValue && (
+                          <span className="text-primary ml-1">
+                            ({customDelayValue} giây)
+                          </span>
+                        )}
+                        {!customDelayMode && settings.replyDelay > 0 && ![0, 2, 5, 10, 15, 20, 30].includes(settings.replyDelay) && (
+                          <span className="text-primary ml-1">
+                            (Tùy chỉnh: {settings.replyDelay} giây)
+                          </span>
+                        )}
+                      </p>
                     </div>
-                    <select 
-                      className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none"
-                      value={settings.replyDelay}
-                      onChange={(e) => setSettings({...settings, replyDelay: Number(e.target.value)})}
-                    >
-                      <option value="0">Ngay lập tức</option>
-                      <option value="2">2 giây</option>
-                      <option value="5">5 giây</option>
-                      <option value="10">10 giây</option>
-                    </select>
+                    <div className="flex flex-col items-end gap-2">
+                      <select 
+                        className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none"
+                        value={customDelayMode ? 'custom' : ([0, 2, 5, 10, 15, 20, 30].includes(settings.replyDelay) ? settings.replyDelay : 'custom')}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (value === 'custom') {
+                            setCustomDelayMode(true)
+                            setCustomDelayValue(settings.replyDelay.toString())
+                          } else {
+                            setCustomDelayMode(false)
+                            setSettings({...settings, replyDelay: Number(value)})
+                          }
+                        }}
+                      >
+                        <option value="0">Ngay lập tức</option>
+                        <option value="2">2 giây</option>
+                        <option value="5">5 giây</option>
+                        <option value="10">10 giây</option>
+                        <option value="15">15 giây</option>
+                        <option value="20">20 giây</option>
+                        <option value="30">30 giây</option>
+                        <option value="custom">Tùy chỉnh...</option>
+                      </select>
+                      
+                      {customDelayMode && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="60"
+                            placeholder="Nhập số giây"
+                            className="bg-dark-300 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:border-primary/50 outline-none w-32"
+                            value={customDelayValue}
+                            onChange={(e) => setCustomDelayValue(e.target.value)}
+                            onKeyPress={(e) => {
+                              if (e.key === 'Enter') {
+                                const delay = Number(customDelayValue)
+                                if (delay >= 0 && delay <= 60) {
+                                  setSettings({...settings, replyDelay: delay})
+                                  setCustomDelayMode(false)
+                                } else {
+                                  alert('Vui lòng nhập số từ 0 đến 60 giây')
+                                }
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              const delay = Number(customDelayValue)
+                              if (delay >= 0 && delay <= 60) {
+                                setSettings({...settings, replyDelay: delay})
+                                setCustomDelayMode(false)
+                              } else {
+                                alert('Vui lòng nhập số từ 0 đến 60 giây')
+                              }
+                            }}
+                            className="bg-primary hover:bg-primary/80 text-white px-3 py-2 rounded-lg text-xs transition-colors"
+                          >
+                            OK
+                          </button>
+                          <button
+                            onClick={() => {
+                              setCustomDelayMode(false)
+                              setCustomDelayValue('')
+                            }}
+                            className="bg-dark-400 hover:bg-dark-300 text-white px-3 py-2 rounded-lg text-xs transition-colors"
+                          >
+                            Hủy
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex items-center justify-between pt-3 border-t border-white/10">

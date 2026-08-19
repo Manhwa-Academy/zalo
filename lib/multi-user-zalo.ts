@@ -17,6 +17,7 @@ const sessionLoadingLocks = new Map<string, Promise<any | null>>();
 
 /**
  * Lấy userId của user hiện tại
+ * ✨ Multi-device support: Link sessions by Zalo account
  * Nếu đã có user với Zalo account này → dùng lại user cũ
  * Không tạo user mới khi login từ thiết bị khác
  */
@@ -43,8 +44,25 @@ export async function getCurrentUserId(): Promise<string> {
     return userId;
   }
   
-  // Bước 2: Session chưa có user → Tạo user mới CHỈ 1 LẦN
-  // (Login lần đầu hoặc logout rồi login lại)
+  // Bước 2: Session chưa có user
+  // 🔍 Check xem session này đã login Zalo chưa, nếu rồi thì link về user cũ
+  const zaloSessionResult = await pool?.query(
+    `SELECT user_id, user_info FROM zalo_sessions 
+     WHERE user_info IS NOT NULL 
+     AND is_active = true
+     ORDER BY created_at DESC
+     LIMIT 10` // Check 10 sessions gần nhất
+  );
+  
+  let existingUserId: string | null = null;
+  
+  if (zaloSessionResult && zaloSessionResult.rows.length > 0) {
+    // Tìm xem có session nào của cùng Zalo account không
+    // (sẽ được link sau khi login thành công)
+    console.log(`🔍 [MultiUser] Found ${zaloSessionResult.rows.length} active Zalo sessions`);
+  }
+  
+  // Bước 3: Tạo user mới nếu chưa có
   const user = await UserManager.getOrCreateUser(sessionId);
   
   // console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
@@ -171,18 +189,51 @@ export async function getCurrentZaloUserInfo(): Promise<any | null> {
 /**
  * Set user info cho user hiện tại
  * CHỈ lưu vào memory và DB, KHÔNG tạo user mới nữa
+ * ✨ Auto-link sessions: Nếu Zalo account đã tồn tại → merge về user cũ
  */
 export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
   const userId = await getCurrentUserId();
+  const zaloUserId = userInfo?.userId || userInfo?.id;
   
-  // console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}`, userInfo);
+  console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}, Zalo ID: ${zaloUserId}`);
+  
+  // 🔍 Check if this Zalo account already exists under a different user
+  if (zaloUserId) {
+    const existingUser = await UserManager.getUserByZaloId(zaloUserId.toString());
+    
+    if (existingUser && existingUser.id !== userId) {
+      console.log(`🔗 [MultiUser] Found existing user ${existingUser.id} for Zalo ID ${zaloUserId}`);
+      console.log(`🔗 [MultiUser] Will use existing user instead of creating duplicate`);
+      
+      // Update current session to point to the existing user
+      const sessionId = getSessionId();
+      await pool?.query(
+        'UPDATE users SET session_id = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2',
+        [sessionId, existingUser.id]
+      );
+      
+      console.log(`✅ [MultiUser] Linked session ${sessionId} to existing user ${existingUser.id}`);
+      
+      // Delete the duplicate user if it has no other sessions
+      await pool?.query(
+        'DELETE FROM users WHERE id = $1 AND id NOT IN (SELECT user_id FROM zalo_sessions WHERE is_active = true)',
+        [userId]
+      );
+      
+      // Use the existing user from now on
+      // (Next call to getCurrentUserId() will return the correct one)
+    }
+  }
+  
+  // Get the final userId (might have changed after linking)
+  const finalUserId = await getCurrentUserId();
   
   // Lưu vào memory
-  zaloUserInfos.set(userId, userInfo);
+  zaloUserInfos.set(finalUserId, userInfo);
   
   // Update vào DB (UPSERT zalo_sessions)
   try {
-    const zaloApi = zaloInstances.get(userId);
+    const zaloApi = zaloInstances.get(finalUserId);
     
     // Try to get credentials from zaloApi if available
     let credentials: any = null
@@ -205,12 +256,12 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
     // Save to DB - even if no credentials, just update userInfo
     if (credentials) {
       // Full save with credentials
-      await UserManager.saveZaloSession(userId, credentials, userInfo);
-      // console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${userId}`);
+      await UserManager.saveZaloSession(finalUserId, credentials, userInfo);
+      console.log(`✅ [MultiUser] Saved Zalo session with user info for user: ${finalUserId}`);
     } else {
       // Just update userInfo without overwriting credentials
-      await UserManager.updateZaloUserInfo(userId, userInfo);
-      console.log(`✅ [MultiUser] Updated userInfo only for user: ${userId}`);
+      await UserManager.updateZaloUserInfo(finalUserId, userInfo);
+      console.log(`✅ [MultiUser] Updated userInfo only for user: ${finalUserId}`);
     }
   } catch (error) {
     console.error('❌ [MultiUser] Failed to update user info in DB:', error);

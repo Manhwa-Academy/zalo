@@ -348,64 +348,88 @@ export class UserManager {
     if (!pool) return;
 
     try {
-      // 1. Load existing settings from DB to merge with updates
-      const existingResult = await pool.query(
-        'SELECT settings FROM bot_settings WHERE user_id = $1',
-        [userId]
-      );
+      // Use transaction to ensure atomicity
+      const client = await pool.connect()
       
-      const existingSettings = existingResult.rows[0]?.settings || {};
-      
-      const fields: string[] = [];
-      const values: any[] = [];
-      let paramIndex = 1;
+      try {
+        await client.query('BEGIN')
+        
+        // 1. Load existing settings from DB to merge with updates
+        const existingResult = await client.query(
+          'SELECT settings FROM bot_settings WHERE user_id = $1',
+          [userId]
+        );
+        
+        const existingSettings = existingResult.rows[0]?.settings || {};
+        
+        const fields: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
 
-      // Core fields (have dedicated columns)
-      if (updates.enabled !== undefined) {
-        fields.push(`enabled = $${paramIndex++}`);
-        values.push(updates.enabled);
+        // Core fields (have dedicated columns)
+        if (updates.enabled !== undefined) {
+          fields.push(`enabled = $${paramIndex++}`);
+          values.push(updates.enabled);
+          console.log(`🔧 [UserManager] Updating enabled to: ${updates.enabled}`)
+        }
+        if (updates.autoReplyMessage !== undefined) {
+          fields.push(`auto_reply_message = $${paramIndex++}`);
+          values.push(updates.autoReplyMessage);
+        }
+        if (updates.replyDelay !== undefined) {
+          fields.push(`reply_delay = $${paramIndex++}`);
+          values.push(updates.replyDelay);
+        }
+
+        // Extra fields (save to JSONB settings column)
+        const newExtraFields: any = {};
+        if (updates.replyScope !== undefined) newExtraFields.replyScope = updates.replyScope;
+        if (updates.whitelist !== undefined) newExtraFields.whitelist = updates.whitelist;
+        if (updates.blacklist !== undefined) newExtraFields.blacklist = updates.blacklist;
+        if (updates.useRandomPreset !== undefined) newExtraFields.useRandomPreset = updates.useRandomPreset;
+        if (updates.presetMessages !== undefined) newExtraFields.presetMessages = updates.presetMessages;
+        if (updates.aiEnabled !== undefined) newExtraFields.aiEnabled = updates.aiEnabled;
+        if (updates.aiPersonality !== undefined) newExtraFields.aiPersonality = updates.aiPersonality;
+        if (updates.aiMaxLength !== undefined) newExtraFields.aiMaxLength = updates.aiMaxLength;
+        if (updates.aiTriggerMode !== undefined) newExtraFields.aiTriggerMode = updates.aiTriggerMode;
+        
+        // Merge existing JSONB settings with new updates
+        const mergedSettings = { ...existingSettings, ...newExtraFields };
+        
+        // Always update settings column to preserve all fields
+        fields.push(`settings = $${paramIndex++}`);
+        values.push(JSON.stringify(mergedSettings));
+
+        fields.push(`updated_at = CURRENT_TIMESTAMP`);
+        values.push(userId);
+
+        const updateQuery = `UPDATE bot_settings SET ${fields.join(', ')} WHERE user_id = $${paramIndex}`
+        console.log(`🔧 [UserManager] Executing query:`, updateQuery)
+        console.log(`🔧 [UserManager] With values:`, values)
+        
+        const result = await client.query(updateQuery, values);
+
+        console.log(`✅ [UserManager] Updated bot settings for user: ${userId}`, {
+          rowsAffected: result.rowCount,
+          coreFields: { enabled: updates.enabled, autoReplyMessage: updates.autoReplyMessage?.slice(0, 30) },
+          extraFields: newExtraFields,
+          mergedSettings,
+        });
+        
+        // Verify the update
+        const verifyResult = await client.query(
+          'SELECT enabled FROM bot_settings WHERE user_id = $1',
+          [userId]
+        )
+        console.log(`🔍 [UserManager] Verified enabled value in DB:`, verifyResult.rows[0]?.enabled)
+        
+        await client.query('COMMIT')
+      } catch (error) {
+        await client.query('ROLLBACK')
+        throw error
+      } finally {
+        client.release()
       }
-      if (updates.autoReplyMessage !== undefined) {
-        fields.push(`auto_reply_message = $${paramIndex++}`);
-        values.push(updates.autoReplyMessage);
-      }
-      if (updates.replyDelay !== undefined) {
-        fields.push(`reply_delay = $${paramIndex++}`);
-        values.push(updates.replyDelay);
-      }
-
-      // Extra fields (save to JSONB settings column)
-      const newExtraFields: any = {};
-      if (updates.replyScope !== undefined) newExtraFields.replyScope = updates.replyScope;
-      if (updates.whitelist !== undefined) newExtraFields.whitelist = updates.whitelist;
-      if (updates.blacklist !== undefined) newExtraFields.blacklist = updates.blacklist;
-      if (updates.useRandomPreset !== undefined) newExtraFields.useRandomPreset = updates.useRandomPreset;
-      if (updates.presetMessages !== undefined) newExtraFields.presetMessages = updates.presetMessages;
-      if (updates.aiEnabled !== undefined) newExtraFields.aiEnabled = updates.aiEnabled;
-      if (updates.aiPersonality !== undefined) newExtraFields.aiPersonality = updates.aiPersonality;
-      if (updates.aiMaxLength !== undefined) newExtraFields.aiMaxLength = updates.aiMaxLength;
-      if (updates.aiTriggerMode !== undefined) newExtraFields.aiTriggerMode = updates.aiTriggerMode;
-      
-      // Merge existing JSONB settings with new updates
-      const mergedSettings = { ...existingSettings, ...newExtraFields };
-      
-      // Always update settings column to preserve all fields
-      fields.push(`settings = $${paramIndex++}`);
-      values.push(JSON.stringify(mergedSettings));
-
-      fields.push(`updated_at = CURRENT_TIMESTAMP`);
-      values.push(userId);
-
-      await pool.query(
-        `UPDATE bot_settings SET ${fields.join(', ')} WHERE user_id = $${paramIndex}`,
-        values
-      );
-
-      console.log(`✅ [UserManager] Updated bot settings for user: ${userId}`, {
-        coreFields: { enabled: updates.enabled, autoReplyMessage: updates.autoReplyMessage?.slice(0, 30) },
-        extraFields: newExtraFields,
-        mergedSettings,
-      });
     } catch (error) {
       console.error('❌ [UserManager] updateBotSettings failed:', error);
       throw error;

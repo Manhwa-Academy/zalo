@@ -18,6 +18,7 @@ import AIPersonalSettings from '@/components/AIPersonalSettings'
 import ActiveDevices from '@/components/ActiveDevices'
 import ZaloAccountManager from '@/components/ZaloAccountManager'
 import ZaloImportModal from '@/components/ZaloImportModal'
+import ConfirmModal from '@/components/ConfirmModal'
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -68,6 +69,9 @@ export default function Home() {
   const [activeThreadIdFromNotif, setActiveThreadIdFromNotif] = useState<string | null>(null)
   const [showResetStatsModal, setShowResetStatsModal] = useState(false)
   
+  // Logout all devices modal
+  const [showLogoutAllModal, setShowLogoutAllModal] = useState(false)
+  
   // 🆕 Typing indicator state - threadId -> Set of user names currently typing
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({})
   const typingTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({}) // Auto-clear typing after 5 seconds
@@ -113,6 +117,26 @@ export default function Home() {
       window.removeEventListener('beforeunload', cleanup)
     }
   }, [])
+
+  // 🆕 Poll bot settings every 5 seconds to sync between devices
+  useEffect(() => {
+    if (!isAuthenticated || !isLoggedIn) return
+
+    console.log('🔄 [Sync] Starting settings sync polling')
+    
+    const syncInterval = setInterval(async () => {
+      try {
+        await loadSettings()
+      } catch (e) {
+        console.warn('⚠️ [Sync] Failed to sync settings:', e)
+      }
+    }, 5000) // Poll every 5 seconds
+
+    return () => {
+      console.log('🛑 [Sync] Stopping settings sync polling')
+      clearInterval(syncInterval)
+    }
+  }, [isAuthenticated, isLoggedIn])
 
   // Session validation polling - Check if still authenticated every 30 seconds
   useEffect(() => {
@@ -242,35 +266,7 @@ export default function Home() {
 
         // 2. Fetch bot settings from file system (bot config)
         try {
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 3000)
-          
-          const settingsRes = await fetch('/api/zalo/settings', { signal: controller.signal })
-          clearTimeout(timeoutId)
-          
-          if (settingsRes.ok) {
-            const settings = await settingsRes.json()
-            console.log('📋 Loaded bot settings from file:', settings)
-            
-            setBotEnabled(settings.enabled ?? false)
-            console.log('🔧 Bot enabled state set to:', settings.enabled ?? false)
-            
-            if (settings.autoReplyMessage) {
-              setAutoReplyMessage(settings.autoReplyMessage)
-            }
-            if (settings.replyScope) {
-              setReplyScope(settings.replyScope)
-            }
-            if (Array.isArray(settings.whitelist)) {
-              setWhitelist(settings.whitelist)
-            }
-            if (typeof settings.useRandomPreset === 'boolean') {
-              setUseRandomPreset(settings.useRandomPreset)
-            }
-            if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
-              setPresetMessages(settings.presetMessages)
-            }
-          }
+          await loadSettings()
         } catch (e) {
           console.warn('⚠️ Could not load bot settings:', e)
         }
@@ -667,9 +663,11 @@ export default function Home() {
 
   // Handle Logout All Devices
   const handleLogoutAllDevices = async () => {
-    if (!confirm('Bạn có chắc muốn đăng xuất tất cả thiết bị? Bạn sẽ cần đăng nhập lại.')) {
-      return
-    }
+    setShowLogoutAllModal(true)
+  }
+
+  const confirmLogoutAllDevices = async () => {
+    setShowLogoutAllModal(false)
 
     try {
       const response = await fetch('/api/auth/logout-all', { method: 'POST' })
@@ -1015,6 +1013,57 @@ export default function Home() {
     })
   }
 
+  // 🆕 Centralized function to load bot settings
+  const loadSettings = async () => {
+    try {
+      console.log('🔄 [Frontend] Loading bot settings from server...')
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      
+      const settingsRes = await fetch('/api/zalo/settings', { 
+        signal: controller.signal,
+        cache: 'no-store', // Prevent caching
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
+      clearTimeout(timeoutId)
+      
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json()
+        console.log('✅ [Frontend] Loaded bot settings:', {
+          enabled: settings.enabled,
+          timestamp: settings.updatedAt
+        })
+        
+        setBotEnabled(settings.enabled ?? false)
+        
+        if (settings.autoReplyMessage) {
+          setAutoReplyMessage(settings.autoReplyMessage)
+        }
+        if (settings.replyScope) {
+          setReplyScope(settings.replyScope)
+        }
+        if (Array.isArray(settings.whitelist)) {
+          setWhitelist(settings.whitelist)
+        }
+        if (typeof settings.useRandomPreset === 'boolean') {
+          setUseRandomPreset(settings.useRandomPreset)
+        }
+        if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
+          setPresetMessages(settings.presetMessages)
+        }
+        
+        return settings
+      }
+    } catch (e) {
+      console.warn('⚠️ [Frontend] Could not load bot settings:', e)
+      throw e
+    }
+  }
+
   // Sync settings helper (for bot config - saved to file)
   const syncSettings = async (updates: Partial<{
     enabled: boolean
@@ -1025,7 +1074,9 @@ export default function Home() {
     presetMessages: string[]
   }>) => {
     try {
-      await fetch('/api/zalo/settings', {
+      console.log('🔄 [Frontend] Syncing settings:', updates)
+      
+      const response = await fetch('/api/zalo/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1037,8 +1088,33 @@ export default function Home() {
           presetMessages: updates.presetMessages ?? presetMessages,
         }),
       })
+
+      if (!response.ok) {
+        throw new Error(`Failed to sync settings: ${response.status}`)
+      }
+
+      const result = await response.json()
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Unknown error')
+      }
+
+      console.log('✅ [Frontend] Settings synced successfully:', {
+        enabled: result.enabled,
+        timestamp: result.updatedAt
+      })
+
+      // Force reload settings from server to ensure consistency
+      await loadSettings()
+      
     } catch (error) {
-      console.error('Failed to sync bot settings:', error)
+      console.error('❌ [Frontend] Failed to sync bot settings:', error)
+      alert('Lỗi: Không thể đồng bộ cài đặt. Vui lòng thử lại!')
+      // Revert local state on error
+      if (updates.enabled !== undefined) {
+        setBotEnabled(!updates.enabled) // Revert
+      }
+      throw error
     }
   }
 
@@ -1526,6 +1602,19 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Logout All Devices Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showLogoutAllModal}
+        title="Đăng xuất tất cả thiết bị?"
+        message="Bạn sẽ cần đăng nhập lại trên tất cả các thiết bị. Hành động này không thể hoàn tác."
+        type="warning"
+        confirmText="Đăng xuất"
+        cancelText="Hủy"
+        showCancel={true}
+        onConfirm={confirmLogoutAllDevices}
+        onCancel={() => setShowLogoutAllModal(false)}
+      />
     </main>
   )
 }

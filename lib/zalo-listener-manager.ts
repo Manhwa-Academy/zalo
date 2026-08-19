@@ -2,6 +2,7 @@ import fs from 'fs'
 import { dataFilePath } from './data-dir'
 import { saveMessage } from './messages-db' // ✅ NEW: Database save
 import { getCurrentUserId } from './multi-user-zalo' // ✅ NEW: Get current user
+import { saveMessageToAllSessions } from './sync-sessions' // 🆕 NEW: Multi-device sync
 
 // NOTE: In multi-user setup, each user has their own zaloApi instance
 // The listener manager is global but should be refactored per-user in future
@@ -52,7 +53,7 @@ export function clearStoredMessages() {
   }
 }
 
-export function broadcastMessage(data: any) {
+export function broadcastMessage(data: any, zaloUserId?: string) {
   // Deduplicate incoming messages before storing or broadcasting
   // Only check by msgId/cliMsgId, NOT by content (to allow duplicate stickers/text)
   const exists = messageQueue.some(
@@ -73,8 +74,8 @@ export function broadcastMessage(data: any) {
   messageQueue.push(data)
   saveStoredMessages()
 
-  // ✅ Save to database (async, non-blocking)
-  saveToDatabaseAsync(data).catch(err => {
+  // ✅ Save to database (async, non-blocking) with multi-device sync
+  saveToDatabaseAsync(data, zaloUserId).catch(err => {
     console.error('❌ Failed to save message to database:', err)
   })
 
@@ -87,15 +88,16 @@ export function broadcastMessage(data: any) {
 
 /**
  * Save message to database (async helper)
+ * 🆕 NOW SYNCS ACROSS ALL SESSIONS OF THE SAME ZALO USER
  */
-async function saveToDatabaseAsync(data: any) {
+async function saveToDatabaseAsync(data: any, zaloUserId?: string) {
   try {
     const userId = await getCurrentUserId()
     if (!userId) {
       return
     }
 
-    await saveMessage(userId, {
+    const messageData = {
       msgId: data.msgId,
       cliMsgId: data.cliMsgId,
       threadId: data.threadId,
@@ -109,7 +111,15 @@ async function saveToDatabaseAsync(data: any) {
       isUndo: data.isUndo || false,
       avatar: data.avatar,
       quote: data.quote
-    })
+    }
+
+    // 🆕 If we have Zalo user ID, save to ALL sessions (multi-device sync)
+    if (zaloUserId) {
+      await saveMessageToAllSessions(zaloUserId, messageData)
+    } else {
+      // Fallback: Save to current session only
+      await saveMessage(userId, messageData)
+    }
   } catch (error) {
     // Silent error - database save failed
     throw error
@@ -275,6 +285,7 @@ async function getBotSettingsAsync() {
     let finalSettings = {
       enabled: true, // Bot enabled by default if user is logged in
       autoReplyMessage: 'Xin chào! Đây là tin nhắn tự động.',
+      replyDelay: 5000, // Default 5 seconds in milliseconds
       replyScope: 'all',
       whitelist: [],
       blacklist: [],
@@ -319,6 +330,7 @@ async function getBotSettingsAsync() {
       
       console.log('✅ [Settings] Loaded bot_settings from database:', {
         enabled: botConfig.enabled,
+        replyDelay: botConfig.reply_delay,
         replyScope: configSettings.replyScope,
         whitelist: configSettings.whitelist?.length || 0,
         blacklist: configSettings.blacklist?.length || 0,
@@ -327,6 +339,7 @@ async function getBotSettingsAsync() {
       
       finalSettings.enabled = botConfig.enabled ?? true
       finalSettings.autoReplyMessage = botConfig.auto_reply_message || finalSettings.autoReplyMessage
+      finalSettings.replyDelay = botConfig.reply_delay || 5000 // Default 5 seconds in milliseconds
       finalSettings.replyScope = configSettings.replyScope || 'all'
       finalSettings.whitelist = Array.isArray(configSettings.whitelist) ? configSettings.whitelist : []
       finalSettings.blacklist = Array.isArray(configSettings.blacklist) ? configSettings.blacklist : []
@@ -356,6 +369,7 @@ function getDefaultSettings() {
   return {
     enabled: false,
     autoReplyMessage: 'Xin chào! Đây là tin nhắn tự động.',
+    replyDelay: 5000, // Default 5 seconds in milliseconds
     replyScope: 'all',
     whitelist: [],
     blacklist: [],
@@ -687,6 +701,10 @@ export function attachListenerToApi(zaloApi: any) {
       type: message.type
     })
 
+    // 🆕 Get Zalo user ID for multi-device sync
+    const zaloUserId = typeof zaloApi.getOwnId === 'function' ? String(zaloApi.getOwnId()) : ''
+    console.log('🔑 [Listener] Zalo User ID:', zaloUserId)
+
     const senderId = String(message.data?.uidFrom || message.threadId || message.from || 'Unknown')
     let senderName = message.data?.dName || message.data?.displayName || message.fromName || ''
     let senderAvatar = message.data?.avatar || message.data?.avt || message.avatar || message.data?.avatarUrl || ''
@@ -986,11 +1004,28 @@ export function attachListenerToApi(zaloApi: any) {
 
     let autoReplied = false
 
+    // 🆕 Check if this is a reaction-only event (no text content)
+    let isReactionOnly = false
+    try {
+      const parsedContent = JSON.parse(rawContent)
+      if (parsedContent.type === 'reaction') {
+        isReactionOnly = true
+      }
+    } catch {
+      // Not JSON, check if it's empty or just emoji (simple check)
+      const trimmed = rawContent.trim()
+      // Check if empty or very short (likely emoji/reaction)
+      if (!trimmed || trimmed.length <= 3) {
+        isReactionOnly = true
+      }
+    }
+
     // Perform auto-reply logic ONLY for incoming messages not sent by self
     console.log('🤖 [Auto-Reply Check]:', {
       isSelf: message.isSelf,
       threadId: targetThreadId,
       isGroup: isGroupMsg,
+      isReactionOnly,
       shouldReply: await shouldAutoReply(targetThreadId, isGroupMsg)
     })
     
@@ -1008,7 +1043,37 @@ export function attachListenerToApi(zaloApi: any) {
           // rawContent is plain text
         }
         
-        const replyText = await getReplyText(textContent, senderName, targetThreadId, senderId, quote)
+        // Get bot settings for delay
+        const settings = await getBotSettingsAsync()
+        const replyDelay = settings.replyDelay || 5000 // Default 5 seconds (in milliseconds)
+        
+        // 🆕 If this is a reaction only, force use preset message (skip AI)
+        let replyText
+        if (isReactionOnly) {
+          console.log('👍 [Auto-Reply] Reaction detected → Using preset message only')
+          
+          // Use random preset if enabled
+          if (settings.useRandomPreset && Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
+            const validPresets = settings.presetMessages.filter((msg: string) => msg && typeof msg === 'string' && msg.trim().length > 0)
+            if (validPresets.length > 0) {
+              const randomIndex = Math.floor(Math.random() * validPresets.length)
+              replyText = validPresets[randomIndex]
+            } else {
+              replyText = settings.autoReplyMessage || 'Cảm ơn bạn! 🙏'
+            }
+          } else {
+            replyText = settings.autoReplyMessage || 'Cảm ơn bạn! 🙏'
+          }
+        } else {
+          // Normal message → Use AI or preset based on settings
+          replyText = await getReplyText(textContent, senderName, targetThreadId, senderId, quote)
+        }
+        
+        // ⏱️ DELAY before sending to make it look more natural and avoid being detected as bot
+        console.log(`⏱️ [Auto-Reply] Waiting ${replyDelay}ms before sending reply...`)
+        await new Promise(resolve => setTimeout(resolve, replyDelay))
+        console.log(`✅ [Auto-Reply] Delay completed, sending reply now`)
+        
         const threadTypeParam = isGroupMsg ? 1 : 0
         await zaloApi.sendMessage(
           { msg: replyText },
@@ -1029,7 +1094,8 @@ export function attachListenerToApi(zaloApi: any) {
       }
     } catch (e) {}
 
-    broadcastMessage(messageData)
+    // 🆕 Pass zaloUserId for multi-device sync
+    broadcastMessage(messageData, zaloUserId)
   })
 
   // 🆕 Typing event listener - broadcast typing indicators

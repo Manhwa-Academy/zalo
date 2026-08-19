@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentZaloApi, getCurrentUserId } from '@/lib/multi-user-zalo'
 import { getStoredMessagesForThread } from '@/lib/zalo-listener-manager'
 import { getThreadMessages } from '@/lib/messages-db'
+import { getMessagesForZaloUser } from '@/lib/sync-sessions'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,6 +19,12 @@ export async function GET(request: Request) {
     const zaloApi = await getCurrentZaloApi() as any
     const userId = await getCurrentUserId()
     
+    // Get Zalo user ID for session syncing
+    let zaloUserId: string | null = null
+    if (zaloApi && typeof zaloApi.getOwnId === 'function') {
+      zaloUserId = String(zaloApi.getOwnId())
+    }
+    
     // If not logged into Zalo, try to load from database instead
     if (!zaloApi) {
       console.log('⚠️ [History] Not logged into Zalo, loading from database...')
@@ -27,7 +34,17 @@ export async function GET(request: Request) {
       }
       
       try {
-        const dbMessages = await getThreadMessages(userId, threadId, 100)
+        // 🆕 Try to load from ALL sessions if we have Zalo user ID
+        let dbMessages: any[] = []
+        
+        if (zaloUserId) {
+          console.log(`🔄 [History] Loading from all sessions for Zalo user ${zaloUserId}`)
+          dbMessages = await getMessagesForZaloUser(zaloUserId, threadId, 100)
+        } else {
+          // Fallback to current session only
+          dbMessages = await getThreadMessages(userId, threadId, 100)
+        }
+        
         console.log(`📦 [History] Loaded ${dbMessages.length} messages from database for thread ${threadId}`)
         
         // Transform database messages to match frontend format

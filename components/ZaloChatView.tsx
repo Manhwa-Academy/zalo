@@ -1739,6 +1739,11 @@ export default function ZaloChatView({
 
   const [showRightInfoDrawer, setShowRightInfoDrawer] = useState(false)
   const [showHeaderActionMenu, setShowHeaderActionMenu] = useState(false)
+  const [conversationContextMenu, setConversationContextMenu] = useState<{ 
+    conv: Conversation; 
+    x: number; 
+    y: number 
+  } | null>(null) // 🆕 Context menu for conversation items
   const actionMenuRef = useRef<HTMLDivElement>(null)
 
   // Persist deletedLocallyMsgIds to localStorage
@@ -2102,21 +2107,72 @@ export default function ZaloChatView({
     return { isOnline: false, statusText: 'Truy cập lâu trước đây' }
   }
 
-  const togglePinThread = (threadId: string) => {
+  const togglePinThread = async (threadId: string) => {
+    const wasPinned = pinnedThreadIds.has(threadId)
+    
+    // Optimistic update UI
     setPinnedThreadIds((prev) => {
       const next = new Set(prev)
       if (next.has(threadId)) {
         next.delete(threadId)
-        setSyncNotice('Đã bỏ ghim hội thoại!')
+        setSyncNotice('Đang bỏ ghim hội thoại...')
       } else {
         next.add(threadId)
-        setSyncNotice('Đã ghim hội thoại lên đầu danh sách!')
+        setSyncNotice('Đang ghim hội thoại...')
       }
       if (typeof window !== 'undefined') {
         localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(next)))
       }
       return next
     })
+    
+    // Sync with server
+    try {
+      const res = await fetch('/api/zalo/pinned-conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          threadIds: wasPinned ? [] : [threadId], // Unpin = empty array, Pin = [threadId]
+          action: wasPinned ? 'unpin' : 'pin'
+        })
+      })
+      const data = await res.json()
+      
+      if (data.success) {
+        setSyncNotice(wasPinned ? '✅ Đã bỏ ghim hội thoại!' : '✅ Đã ghim hội thoại lên đầu!')
+      } else {
+        setSyncNotice('❌ ' + (data.error || 'Không thể ghim/bỏ ghim'))
+        // Revert optimistic update on error
+        setPinnedThreadIds((prev) => {
+          const next = new Set(prev)
+          if (wasPinned) {
+            next.add(threadId)
+          } else {
+            next.delete(threadId)
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(next)))
+          }
+          return next
+        })
+      }
+    } catch (error) {
+      console.error('Pin conversation error:', error)
+      setSyncNotice('❌ Lỗi khi ghim/bỏ ghim hội thoại')
+      // Revert optimistic update on error
+      setPinnedThreadIds((prev) => {
+        const next = new Set(prev)
+        if (wasPinned) {
+          next.add(threadId)
+        } else {
+          next.delete(threadId)
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(next)))
+        }
+        return next
+      })
+    }
   }
 
   const handleLeaveGroup = async (groupId: string) => {
@@ -2527,15 +2583,53 @@ export default function ZaloChatView({
     try {
       console.log('🔍 [fetchData] Starting to fetch groups and friends...')
       
-      const [groupsRes, friendsRes] = await Promise.allSettled([
+      const [groupsRes, friendsRes, pinnedRes] = await Promise.allSettled([
         fetch('/api/zalo/groups'),
         fetch('/api/zalo/friends'),
+        fetch('/api/zalo/pinned-conversations'), // 🆕 Load pinned conversations
       ])
 
       console.log('📊 [fetchData] Groups response:', groupsRes.status, groupsRes.status === 'fulfilled' ? groupsRes.value.status : 'rejected')
       console.log('📊 [fetchData] Friends response:', friendsRes.status, friendsRes.status === 'fulfilled' ? friendsRes.value.status : 'rejected')
+      console.log('📊 [fetchData] Pinned response:', pinnedRes.status, pinnedRes.status === 'fulfilled' ? pinnedRes.value.status : 'rejected')
 
       const fetchedConvs: Conversation[] = []
+      
+      // 🆕 Load pinned conversations from server
+      if (pinnedRes.status === 'fulfilled' && pinnedRes.value.ok) {
+        try {
+          const pinnedData = await pinnedRes.value.json()
+          console.log('✅ [fetchData] Pinned data:', pinnedData)
+          
+          if (pinnedData.success && pinnedData.pinnedConversations) {
+            // Extract thread IDs from pinned conversations
+            const pinnedThreadIds = new Set<string>()
+            
+            if (Array.isArray(pinnedData.pinnedConversations)) {
+              pinnedData.pinnedConversations.forEach((item: any) => {
+                // Handle different response formats
+                const threadId = String(item.threadId || item.id || item)
+                if (threadId) {
+                  pinnedThreadIds.add(threadId)
+                }
+              })
+            }
+            
+            console.log('📌 [fetchData] Loaded', pinnedThreadIds.size, 'pinned conversations from server')
+            
+            // Update state with server pinned list
+            if (pinnedThreadIds.size > 0) {
+              setPinnedThreadIds(pinnedThreadIds)
+              // Save to localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(pinnedThreadIds)))
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ [fetchData] Failed to parse pinned conversations:', e)
+        }
+      }
 
       if (groupsRes.status === 'fulfilled' && groupsRes.value.ok) {
         const gData = await groupsRes.value.json()
@@ -3954,6 +4048,42 @@ export default function ZaloChatView({
                           </button>
                         </>
                       )}
+                      
+                      {/* 🆕 Delete Chat (for all types) */}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!activeConv) return
+                          
+                          if (!confirm(`Bạn có chắc muốn xóa hội thoại với "${activeConv.name}"?\n\nLưu ý: Tin nhắn sẽ bị xóa khỏi danh sách nhưng không xóa vĩnh viễn trên Zalo.`)) return
+                          
+                          try {
+                            const res = await fetch('/api/zalo/delete-chat', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ threadId: activeConv.threadId })
+                            })
+                            const data = await res.json()
+                            
+                            if (data.success) {
+                              alert('✅ Đã xóa hội thoại')
+                              setShowHeaderActionMenu(false)
+                              // Remove from conversations
+                              setConversations((prev) => prev.filter((c) => c.threadId !== activeConv.threadId))
+                              setActiveThreadId(null)
+                            } else {
+                              alert('❌ ' + (data.error || 'Không thể xóa hội thoại'))
+                            }
+                          } catch (error) {
+                            console.error('Delete chat error:', error)
+                            alert('❌ Lỗi khi xóa hội thoại')
+                          }
+                        }}
+                        className="w-full px-4 py-3 flex items-center gap-3 text-left text-xs text-red-500 hover:bg-white/10 transition-all font-medium cursor-pointer border-t border-white/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Xóa hội thoại</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -5296,20 +5426,64 @@ export default function ZaloChatView({
                 {(() => {
                   const currentHistory = (activeThreadId ? historyMessages[activeThreadId] : []) || []
                   
-                  const photos = currentHistory.filter((msg) => {
-                    if (msg.photoUrl || msg.imageUrl) return true
+                  // 🔧 FIX: Count actual media items, not messages with media
+                  const photos = currentHistory.flatMap((msg) => {
+                    const items: any[] = []
+                    
+                    // Check photoUrl/imageUrl
+                    if (msg.photoUrl) items.push({ url: msg.photoUrl, msg })
+                    if (msg.imageUrl && msg.imageUrl !== msg.photoUrl) items.push({ url: msg.imageUrl, msg })
+                    
+                    // Check attachments array
                     if (msg.attachments && Array.isArray(msg.attachments)) {
-                      return msg.attachments.some((att: any) => att.type === 'photo' || att.type === 'image' || String(att.url).match(/\.(jpeg|jpg|gif|png|webp)/i))
+                      msg.attachments.forEach((att: any) => {
+                        if (att.type === 'photo' || att.type === 'image' || String(att.url).match(/\.(jpeg|jpg|gif|png|webp)/i)) {
+                          items.push({ url: att.url, msg })
+                        }
+                      })
                     }
-                    return typeof msg.content === 'string' && msg.content.match(/https?:\/\/[^\s]+?\.(jpeg|jpg|gif|png|webp)/i)
+                    
+                    // Check content for image URLs
+                    if (typeof msg.content === 'string') {
+                      const matches = msg.content.match(/https?:\/\/[^\s]+?\.(jpeg|jpg|gif|png|webp)/gi) || []
+                      matches.forEach(url => items.push({ url, msg }))
+                    }
+                    
+                    // Deduplicate by URL
+                    const uniqueItems = items.filter((item, index, self) =>
+                      index === self.findIndex(t => t.url === item.url)
+                    )
+                    
+                    return uniqueItems
                   })
 
-                  const videos = currentHistory.filter((msg) => {
-                    if (msg.videoUrl) return true
+                  const videos = currentHistory.flatMap((msg) => {
+                    const items: any[] = []
+                    
+                    // Check videoUrl
+                    if (msg.videoUrl) items.push({ url: msg.videoUrl, msg })
+                    
+                    // Check attachments array
                     if (msg.attachments && Array.isArray(msg.attachments)) {
-                      return msg.attachments.some((att: any) => att.type === 'video' || String(att.url).match(/\.(mp4|webm|mov)/i))
+                      msg.attachments.forEach((att: any) => {
+                        if (att.type === 'video' || String(att.url).match(/\.(mp4|webm|mov)/i)) {
+                          items.push({ url: att.url, msg })
+                        }
+                      })
                     }
-                    return typeof msg.content === 'string' && msg.content.match(/https?:\/\/[^\s]+?\.(mp4|webm|mov)/i)
+                    
+                    // Check content for video URLs
+                    if (typeof msg.content === 'string') {
+                      const matches = msg.content.match(/https?:\/\/[^\s]+?\.(mp4|webm|mov)/gi) || []
+                      matches.forEach(url => items.push({ url, msg }))
+                    }
+                    
+                    // Deduplicate by URL
+                    const uniqueItems = items.filter((item, index, self) =>
+                      index === self.findIndex(t => t.url === item.url)
+                    )
+                    
+                    return uniqueItems
                   })
 
                   const links = currentHistory.filter((msg) => {
@@ -5355,8 +5529,8 @@ export default function ZaloChatView({
                             <p className="text-xs text-gray-400 text-center py-8">Chưa có hình ảnh nào được gửi.</p>
                           ) : (
                             <div className="grid grid-cols-3 gap-2 max-h-[380px] overflow-y-auto pr-1">
-                              {photos.map((m, idx) => {
-                                const src = m.photoUrl || m.imageUrl || (m.attachments && m.attachments[0]?.url) || (m.content.match(/https?:\/\/[^\s]+?\.(jpeg|jpg|gif|png|webp)/i)?.[0]) || ''
+                              {photos.map((item, idx) => {
+                                const src = item.url || ''
                                 return (
                                   <div
                                     key={idx}
@@ -5379,12 +5553,12 @@ export default function ZaloChatView({
                             <p className="text-xs text-gray-400 text-center py-8">Chưa có video nào được gửi.</p>
                           ) : (
                             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
-                              {videos.map((m, idx) => {
-                                const src = m.videoUrl || (m.attachments && m.attachments[0]?.url) || (m.content.match(/https?:\/\/[^\s]+?\.(mp4|webm|mov)/i)?.[0]) || ''
+                              {videos.map((item, idx) => {
+                                const src = item.url || ''
                                 return (
                                   <div key={idx} className="bg-dark-300 rounded-xl p-2 border border-white/10 space-y-1">
                                     <video src={src} controls className="w-full rounded-lg max-h-36 object-cover" />
-                                    <p className="text-[10px] text-gray-400 truncate">{m.fromName || 'Zalo'} • {m.timestamp}</p>
+                                    <p className="text-[10px] text-gray-400 truncate">{item.msg?.fromName || 'Zalo'} • {item.msg?.timestamp}</p>
                                   </div>
                                 )
                               })}

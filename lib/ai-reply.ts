@@ -77,11 +77,50 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
     // Build system prompt with personality
     const systemPrompt = buildSystemPrompt(personality, userContext, maxLength, presetMessages)
     
-    // Build conversation context
+    // Build conversation context (Memory)
     const conversationContext = conversationHistory
       .slice(-5) // Last 5 messages for context
       .map(msg => `${msg.role === 'user' ? 'Họ' : 'Bạn'}: ${msg.content}`)
       .join('\n')
+    
+    // Add memory usage rules
+    const memoryRules = conversationContext ? `
+
+🧠 MEMORY (Lịch sử trò chuyện - CHỈ THAM KHẢO):
+${conversationContext}
+
+⚠️ QUY TẮC SỬ DỤNG MEMORY CỰC KỲ QUAN TRỌNG:
+1. Memory CHỈ là thông tin tham khảo, KHÔNG phải nội dung bắt buộc
+2. Luôn ưu tiên TIN NHẮN MỚI NHẤT của người dùng
+3. KHÔNG được tự động nhắc lại Memory nếu tin nhắn hiện tại KHÔNG liên quan
+4. KHÔNG được suy diễn Memory thành sự kiện đang xảy ra
+
+❌ CẤM SUY DIỄN:
+- Memory: "Hôm qua Phong nói sẽ đi chơi"
+- Tin nhắn: "alo"
+- ❌ SAI: "Hôm qua cậu nói sẽ đi chơi mà, hôm nay đi chưa?"
+- ✅ ĐÚNG: "Alooo~ Có gì không? 😆"
+
+📋 KHI NÀO SỬ DỤNG MEMORY:
+✅ Tin nhắn hỏi TRỰC TIẾP về thông tin trong Memory
+   - Memory: "Phong nói cuối tuần đi chơi"
+   - Tin nhắn: "Cuối tuần cậu có đi chơi không?"
+   - → SỬ DỤNG Memory để trả lời
+
+❌ Tin nhắn KHÔNG liên quan đến Memory
+   - Memory: "Phong đang làm website"
+   - Tin nhắn: "Cậu ăn cơm chưa?"
+   - → BỎ QUA Memory hoàn toàn
+
+🚫 ĐẶC BIỆT VỚI TIN NHẮN NGẮN (alo, hi, hello, ok, ừ, haha):
+→ LUÔN trả lời tự nhiên dựa trên tin nhắn hiện tại
+→ KHÔNG được lôi Memory ra để trả lời
+→ KHÔNG được kể lại sự kiện cũ
+
+💡 NGUYÊN TẮC:
+- Nếu KHÔNG CHẮC Memory có liên quan → BỎ QUA Memory
+- Memory để AI nhớ, KHÔNG phải để AI kể lại
+- Chỉ dùng Memory khi giúp trả lời TRỰC TIẾP câu hỏi hiện tại` : ''
 
     // Build media analysis prompt if media is provided
     let mediaAnalysisPrompt = ''
@@ -91,10 +130,15 @@ export async function generateAIReply(options: AIReplyOptions): Promise<AIReplyR
 
     // Build full prompt
     const fullPrompt = `${systemPrompt}
-
-${conversationContext ? `📝 Lịch sử trò chuyện gần đây:\n${conversationContext}\n` : ''}
+${memoryRules}
 ${mediaAnalysisPrompt}
 💬 Tin nhắn mới từ ${senderName}: "${message}"
+
+⚠️ NHẮC NHỚ QUAN TRỌNG:
+- ƯU TIÊN trả lời tin nhắn MỚI NHẤT: "${message}"
+- CHỈ dùng Memory nếu tin nhắn MỚI hỏi về thông tin đó
+- KHÔNG kể lại Memory nếu tin nhắn không liên quan
+- Với lời chào (alo/hi/hello) → Chào lại tự nhiên, ĐỪNG nhắc Memory
 
 Trả lời (${maxLength} ký tự):`
 
@@ -437,7 +481,14 @@ ${contextInfo}${styleReference}
 - Hình ảnh: Khen ngợi/bình luận (vd: "Đẹp quá!", "Ảnh này chụp ở đâu vậy?", "👍")
 - Link: Cảm ơn chia sẻ (vd: "Thanks! Để mình xem nhé", "Hay đấy!")
 - File: Xác nhận nhận (vd: "Đã nhận rồi nha!", "Cảm ơn đã gửi!")
-- TRẢ LỜI NGẮN GỌN, TỰ NHIÊN như chat thường ngày`
+- TRẢ LỜI NGẮN GỌN, TỰ NHIÊN như chat thường ngày
+
+📞 KHI NHẬN LỜI CHÀO (ALO, HELLO, HI, CHÀO):
+- Chào lại TỰ NHIÊN như bạn bè (vd: "Alo! Có gì không?", "Chào bạn!", "Hi! Sao rồi?", "Dạo này thế nào?")
+- KHÔNG nói "Em đây nè", "Tớ ở đây", "Tớ đang chờ" (trừ khi personality là cute/shy)
+- KHÔNG nói "Tớ không đi đâu", "Tớ vẫn ở đây" (nghe lạ và không tự nhiên)
+- Có thể hỏi ngược: "Cần gì không?", "Có chuyện gì à?", "Sao rồi?"
+- Giữ ngắn gọn 10-30 từ, như lời chào thường ngày`
 }
 
 /**
@@ -744,6 +795,10 @@ export function shouldUseAIReply(message: string): boolean {
     // Xưng hô thân mật (mày/tao style)
     'mày', 'may', 'm', 'mi', 'tao', 't', 'tau',
     'ông', 'ong', 'bà', 'ba', 'thằng', 'thang', 'con',
+    
+    // Lời chào (alo, hello, hi, chào)
+    'alo', 'alô', 'hello', 'hi', 'hey', 'chào', 'chao',
+    'yo', 'hê lô', 'helo', 'hê lô', 'xin chào', 'xin chao',
   ]
   
   if (aiKeywords.some(keyword => msg.includes(keyword))) {
@@ -880,18 +935,35 @@ export async function generateAIReplyForUser(
 - KHÔNG tiết lộ là AI, KHÔNG nói "Tôi là AI" hay "Tôi giúp..."
 
 💬 NGƯỜI GỬI TIN: ${senderName}
-${conversationHistory.length > 0 ? `
-📝 LỊCH SỬ TRÒ CHUYỆN (${conversationHistory.length} tin):
-${conversationHistory.map(h => `- ${h.from}: ${h.content}`).join('\n')}
-` : ''}
+
+🧠 MEMORY (Lịch sử trò chuyện - CHỈ THAM KHẢO):
+${conversationHistory.length > 0 ? conversationHistory.map(h => `- ${h.from}: ${h.content}`).join('\n') : 'Chưa có lịch sử'}
+
+⚠️ QUY TẮC SỬ DỤNG MEMORY CỰC KỲ QUAN TRỌNG:
+1. Memory CHỈ là thông tin tham khảo, KHÔNG phải nội dung bắt buộc
+2. Luôn ưu tiên TIN NHẮN MỚI NHẤT: "${message}"
+3. KHÔNG được tự động nhắc lại Memory nếu tin nhắn hiện tại KHÔNG liên quan
+4. KHÔNG được suy diễn Memory thành sự kiện đang xảy ra
+
+❌ CẤM SUY DIỄN VÀ KỂ LẠI:
+- Tin nhắn: "alo" → Chào lại tự nhiên, ĐỪNG nhắc Memory
+- Tin nhắn: "hi" → Reply "Hi!", ĐỪNG kể lại chuyện cũ
+- Tin nhắn: "ok" → Reply "Ok nha!", ĐỪNG lôi Memory ra
+
+✅ KHI NÀO DÙNG MEMORY:
+- Tin nhắn hỏi TRỰC TIẾP về thông tin trong Memory
+- Ví dụ: Memory có "đi chơi", tin nhắn hỏi "đi chơi chưa?" → Dùng Memory
 
 🎯 TIN NHẮN CẦN TRẢ LỜI: "${message}"
 
-💡 GỢI Ý:
-- Nếu ${senderName} hỏi ${userProfile.zaloDisplayName}: Trả lời như chính ${userProfile.zaloDisplayName}
+💡 HƯỚNG DẪN:
+- Nếu ${senderName} chào hỏi: Chào lại tự nhiên
+- Nếu ${senderName} hỏi về thông tin cụ thể: Kiểm tra Memory
 - Nếu ${senderName} @mention: Xác nhận "Ủa có gì vậy?"
-- Nếu ${senderName} reply tin: Trả lời tiếp theo맥락
+- Nếu không chắc Memory liên quan → BỎ QUA Memory
 - Giữ phong cách ${settings.aiPersonality || 'thân thiện'}
+
+⚠️ NHẮC NHỚ: Trả lời tin nhắn "${message}", KHÔNG kể lại Memory nếu không liên quan!
 `
 
   // Use existing generateAIReply with enhanced prompt

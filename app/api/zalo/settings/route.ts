@@ -5,6 +5,12 @@ export async function GET() {
   try {
     const settings = await getCurrentBotSettings()
     
+    console.log('📖 [Settings] GET request - Current settings:', {
+      enabled: settings.enabled,
+      userId: settings.userId,
+      timestamp: new Date().toISOString()
+    })
+    
     // Return full settings object for frontend compatibility
     return NextResponse.json({
       enabled: settings.enabled ?? false,
@@ -19,9 +25,10 @@ export async function GET() {
       aiPersonality: settings.aiPersonality || 'friendly',
       aiMaxLength: settings.aiMaxLength || 200,
       aiTriggerMode: settings.aiTriggerMode || 'smart',
+      updatedAt: settings.updatedAt || new Date().toISOString(), // Add timestamp for cache control
     })
   } catch (error: any) {
-    console.error('GET /api/zalo/settings error:', error)
+    console.error('❌ [Settings] GET /api/zalo/settings error:', error)
     return NextResponse.json({ 
       success: false,
       error: error.message 
@@ -32,10 +39,23 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const updates = await request.json()
+    
+    console.log('📝 [Settings] Received update request:', {
+      enabled: updates.enabled,
+      timestamp: new Date().toISOString()
+    })
+    
+    // Update settings
     await updateCurrentBotSettings(updates)
+    
+    // Force reload from database to ensure we get the latest
     const settings = await getCurrentBotSettings()
     
-    console.log('⚙️ Updated bot settings for current user:', settings)
+    console.log('✅ [Settings] Updated and verified bot settings:', {
+      enabled: settings.enabled,
+      userId: settings.userId,
+      timestamp: new Date().toISOString()
+    })
     
     // Return full settings object for frontend compatibility
     return NextResponse.json({ 
@@ -52,10 +72,12 @@ export async function POST(request: Request) {
       aiPersonality: settings.aiPersonality || 'friendly',
       aiMaxLength: settings.aiMaxLength || 200,
       aiTriggerMode: settings.aiTriggerMode || 'smart',
+      updatedAt: new Date().toISOString(), // Add timestamp to help with caching
     })
   } catch (error: any) {
-    console.error('POST /api/zalo/settings error:', error)
+    console.error('❌ [Settings] POST /api/zalo/settings error:', error)
     return NextResponse.json({ 
+      success: false,
       error: error.message 
     }, { status: 500 })
   }
