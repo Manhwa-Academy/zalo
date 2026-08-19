@@ -40,23 +40,55 @@ export async function POST(request: Request) {
       // Clear in-memory cache
       clearStoredMessages()
       
-      // Clear database - delete all messages for current user
+      // Clear database - delete all messages for ALL sessions of same Zalo user
       try {
         const { getCurrentUserId } = await import('@/lib/multi-user-zalo')
+        const { getAllSessionsForZaloUser } = await import('@/lib/sync-sessions')
         const userId = await getCurrentUserId()
         
         if (userId) {
           const pool = (await import('@/lib/postgres')).default
           if (pool) {
-            await pool.query('DELETE FROM zalo_messages WHERE user_id = $1', [userId])
-            console.log('✅ [Listener] Deleted all messages from database for user:', userId)
+            // Get Zalo user ID from current session
+            const sessionResult = await pool.query(
+              `SELECT user_info FROM zalo_sessions WHERE user_id = $1`,
+              [userId]
+            )
+            
+            let zaloUserId: string | null = null
+            if (sessionResult.rows.length > 0) {
+              const userInfo = sessionResult.rows[0].user_info
+              zaloUserId = userInfo?.userId || null
+            }
+            
+            if (zaloUserId) {
+              // Get all sessions for this Zalo user
+              const sessionUserIds = await getAllSessionsForZaloUser(zaloUserId)
+              
+              if (sessionUserIds.length > 0) {
+                // Delete from ALL sessions
+                const result = await pool.query(
+                  'DELETE FROM zalo_messages WHERE user_id = ANY($1)', 
+                  [sessionUserIds]
+                )
+                console.log(`✅ [Listener] Deleted ${result.rowCount} messages from ${sessionUserIds.length} sessions for Zalo user:`, zaloUserId)
+              } else {
+                // Fallback: delete from current session only
+                const result = await pool.query('DELETE FROM zalo_messages WHERE user_id = $1', [userId])
+                console.log(`✅ [Listener] Deleted ${result.rowCount} messages from current session:`, userId)
+              }
+            } else {
+              // Fallback: delete from current session only
+              const result = await pool.query('DELETE FROM zalo_messages WHERE user_id = $1', [userId])
+              console.log(`✅ [Listener] Deleted ${result.rowCount} messages from current session:`, userId)
+            }
           }
         }
       } catch (error: any) {
         console.error('❌ [Listener] Failed to delete messages from database:', error)
       }
       
-      return NextResponse.json({ success: true, message: 'Message logs cleared from memory and database' })
+      return NextResponse.json({ success: true, message: 'Message logs cleared from memory and database (all sessions)' })
     }
 
     return NextResponse.json({ success: true, message: 'Listener status checked' })

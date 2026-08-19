@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Bot, MessageSquare, Users, User, Target, Globe, Check, Shuffle, FileText, X } from 'lucide-react'
 
 export type ReplyScope = 'all' | 'user_only' | 'group_only' | 'whitelist'
 
@@ -119,7 +120,10 @@ export default function ControlPanel({
       {/* Header & Toggle */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg sm:text-xl font-bold">Điều khiển Bot</h3>
+          <h3 className="text-lg sm:text-xl font-bold flex items-center gap-2">
+            <Bot className="w-5 h-5 text-primary" />
+            Điều khiển Bot
+          </h3>
           <p className="text-xs sm:text-sm text-gray-400">Bật/tắt và cấu hình tin nhắn tự động</p>
         </div>
         <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-white/10">
@@ -136,8 +140,15 @@ export default function ControlPanel({
               }`}
             />
           </button>
-          <span className={`badge ${botEnabled ? 'badge-success' : 'badge-danger'} text-xs`}>
-            {botEnabled ? '🟢 Đang BẬT' : '⚫ Đã TẮT'}
+          <span className={`badge ${botEnabled ? 'badge-success' : 'badge-danger'} text-xs flex items-center gap-1`}>
+            {botEnabled ? (
+              <>
+                <Check className="w-3 h-3" />
+                Đang BẬT
+              </>
+            ) : (
+              '⚫ Đã TẮT'
+            )}
           </span>
         </div>
       </div>
@@ -156,9 +167,15 @@ export default function ControlPanel({
             onClick={() => setShowPresetModal(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/20 hover:bg-primary/30 border border-primary/40 text-primary-light text-xs font-semibold transition-all shadow-sm"
           >
-            💬 5 tin nhắn soạn trước
-            <span className={`px-2 py-0.5 rounded-full text-[10px] ${useRandomPreset ? 'bg-success text-white' : 'bg-gray-700 text-gray-300'}`}>
-              {useRandomPreset ? '🎲 Random BẬT' : 'TẮT'}
+            <MessageSquare className="w-4 h-4" />
+            5 tin nhắn soạn trước
+            <span className={`px-2 py-0.5 rounded-full text-[10px] flex items-center gap-1 ${useRandomPreset ? 'bg-success text-white' : 'bg-gray-700 text-gray-300'}`}>
+              {useRandomPreset ? (
+                <>
+                  <Shuffle className="w-3 h-3" />
+                  Random BẬT
+                </>
+              ) : 'TẮT'}
             </span>
           </button>
         </div>
@@ -176,7 +193,7 @@ export default function ControlPanel({
         {useRandomPreset && (
           <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-primary-light font-medium">
-              <span className="text-base">🎲</span>
+              <Shuffle className="w-4 h-4" />
               <span>
                 Chế độ Trả lời Ngẫu nhiên đang <strong>BẬT</strong>. Bot sẽ chọn ngẫu nhiên 1 trong 5 tin nhắn soạn trước (khác rỗng).
               </span>
@@ -205,7 +222,7 @@ export default function ControlPanel({
                 title={preset || 'Trống'}
                 className="btn bg-dark-300 hover:bg-primary/20 text-xs truncate text-left border border-dark-200 hover:border-primary/40 flex items-center gap-1.5"
               >
-                <span>📝</span>
+                <FileText className="w-3.5 h-3.5" />
                 <span className="truncate">Mẫu {index + 1}</span>
               </button>
             ))}
@@ -215,57 +232,62 @@ export default function ControlPanel({
 
       {/* Scope Filter Section */}
       <div className="pt-4 border-t border-dark-300">
-        <label className="block text-sm font-medium mb-3">
-          🎯 Phạm vi áp dụng Auto-Reply
+        <label className="block text-sm font-medium mb-3 flex items-center gap-2">
+          <Target className="w-4 h-4 text-primary" />
+          Phạm vi áp dụng Auto-Reply
         </label>
         
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
           <button
             type="button"
             onClick={() => onScopeChange('all')}
-            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all ${
+            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
               replyScope === 'all'
                 ? 'border-primary bg-primary/20 text-white shadow-lg'
                 : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white'
             }`}
           >
-            🌐 Tất cả trò chuyện
+            <Globe className="w-4 h-4" />
+            Tất cả trò chuyện
           </button>
 
           <button
             type="button"
             onClick={() => onScopeChange('user_only')}
-            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all ${
+            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
               replyScope === 'user_only'
                 ? 'border-primary bg-primary/20 text-white shadow-lg'
                 : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white'
             }`}
           >
-            👤 Chỉ tin cá nhân
+            <User className="w-4 h-4" />
+            Chỉ tin cá nhân
           </button>
 
           <button
             type="button"
             onClick={() => onScopeChange('group_only')}
-            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all ${
+            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
               replyScope === 'group_only'
                 ? 'border-primary bg-primary/20 text-white shadow-lg'
                 : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white'
             }`}
           >
-            👥 Chỉ tin nhóm
+            <Users className="w-4 h-4" />
+            Chỉ tin nhóm
           </button>
 
           <button
             type="button"
             onClick={() => onScopeChange('whitelist')}
-            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all ${
+            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
               replyScope === 'whitelist'
                 ? 'border-primary bg-primary/20 text-white shadow-lg'
                 : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white'
             }`}
           >
-            🎯 Chọn nhóm chỉ định
+            <Target className="w-4 h-4" />
+            Chọn nhóm chỉ định
           </button>
         </div>
 
@@ -347,7 +369,7 @@ export default function ControlPanel({
                           />
                         ) : (
                           <div className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-bold text-xs shrink-0">
-                            👥
+                            <Users className="w-5 h-5" />
                           </div>
                         )}
                         <div>
@@ -400,13 +422,34 @@ export default function ControlPanel({
         <div className="p-4 bg-success/10 border border-success/30 rounded-lg">
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
-            <p className="text-sm text-success font-medium">
+            <p className="text-sm text-success font-medium flex items-center gap-1 flex-wrap">
               Bot đang hoạt động và áp dụng pham vi: {' '}
-              {replyScope === 'all' && '🌐 Tất cả trò chuyện'}
-              {replyScope === 'user_only' && '👤 Chỉ tin cá nhân'}
-              {replyScope === 'group_only' && '👥 Chỉ tin nhóm'}
-              {replyScope === 'whitelist' && `🎯 Nhóm chỉ định (${whitelist.length} nhóm)`}
-              {useRandomPreset && ' • 🎲 Trả lời ngẫu nhiên 1 trong 5 mẫu tin'}
+              {replyScope === 'all' && (
+                <>
+                  <Globe className="w-4 h-4 inline" /> Tất cả trò chuyện
+                </>
+              )}
+              {replyScope === 'user_only' && (
+                <>
+                  <User className="w-4 h-4 inline" /> Chỉ tin cá nhân
+                </>
+              )}
+              {replyScope === 'group_only' && (
+                <>
+                  <Users className="w-4 h-4 inline" /> Chỉ tin nhóm
+                </>
+              )}
+              {replyScope === 'whitelist' && (
+                <>
+                  <Target className="w-4 h-4 inline" /> Nhóm chỉ định ({whitelist.length} nhóm)
+                </>
+              )}
+              {useRandomPreset && (
+                <>
+                  {' • '}
+                  <Shuffle className="w-4 h-4 inline" /> Trả lời ngẫu nhiên 1 trong 5 mẫu tin
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -417,10 +460,10 @@ export default function ControlPanel({
       {/* ========================================================= */}
       {showPresetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-slideIn">
-          <div className="bg-[#121927] border border-dark-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="bg-[#121927] border border-dark-200 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
             
             {/* Modal Header */}
-            <div className="p-5 border-b border-dark-300 text-center relative bg-[#172033]">
+            <div className="p-5 border-b border-dark-300 text-center relative bg-[#172033] flex-shrink-0">
               <h3 className="text-xl font-bold text-sky-400">
                 5 tin nhắn soạn trước
               </h3>
@@ -434,16 +477,16 @@ export default function ControlPanel({
                   setShowPresetModal(false)
                   setEditingIndex(null)
                 }}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center text-lg transition-colors"
+                className="absolute top-4 right-4 text-gray-400 hover:text-white w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center transition-colors"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Random Reply Switch Toggle inside Modal */}
-            <div className="p-4 bg-[#1a2337] border-b border-dark-300 flex items-center justify-between px-6">
+            <div className="p-4 bg-[#1a2337] border-b border-dark-300 flex items-center justify-between px-6 flex-shrink-0">
               <div className="flex items-center gap-2">
-                <span className="text-base">🎲</span>
+                <Shuffle className="w-5 h-5 text-primary" />
                 <div>
                   <p className="text-xs font-semibold text-white">Chế độ Trả lời Ngẫu nhiên</p>
                   <p className="text-[10px] text-gray-400">Tự động chọn 1 trong 5 mẫu tin khi nhận tin nhắn</p>
@@ -464,8 +507,8 @@ export default function ControlPanel({
               </button>
             </div>
 
-            {/* 5 Preset Cards List */}
-            <div className="p-4 space-y-3 overflow-y-auto flex-1">
+            {/* 5 Preset Cards List - Scrollable */}
+            <div className="p-4 space-y-3 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
               {currentPresets.map((preset, index) => {
                 const isEditing = editingIndex === index
 
@@ -541,7 +584,7 @@ export default function ControlPanel({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-dark-300 bg-[#172033] flex items-center justify-between">
+            <div className="p-4 border-t border-dark-300 bg-[#172033] flex items-center justify-between flex-shrink-0">
               <span className="text-[11px] text-gray-400">
                 {currentPresets.filter(p => p.trim()).length}/5 tin nhắn có sẵn
               </span>

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { QrState } from '@/lib/qr-state'
+import { User, CheckCircle, AlertTriangle, RefreshCw, Download, Clock, XCircle } from 'lucide-react'
 
 interface LoginSectionProps {
   isLoading: boolean
@@ -75,10 +76,10 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
               {scannedUser?.avatar ? (
                 <img src={scannedUser.avatar} alt={scannedUser.name} className="w-full h-full rounded-full object-cover" />
               ) : (
-                <span className="text-3xl">👤</span>
+                <User className="w-10 h-10 text-white" />
               )}
-              <span className="absolute bottom-0 right-0 w-6 h-6 bg-success rounded-full flex items-center justify-center text-white text-xs font-bold">
-                ✓
+              <span className="absolute bottom-0 right-0 w-6 h-6 bg-success rounded-full flex items-center justify-center text-white">
+                <CheckCircle className="w-4 h-4" />
               </span>
             </div>
 
@@ -89,8 +90,9 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
               <p className="text-sm font-semibold text-white mt-1">
                 {scannedUser?.name || 'Tài khoản Zalo'}
               </p>
-              <p className="text-xs text-yellow-400 mt-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2.5">
-                👉 Vui lòng mở điện thoại và bấm <strong>[XÁC NHẬN ĐĂNG NHẬP]</strong>
+              <p className="text-xs text-yellow-400 mt-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2.5 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>Vui lòng mở điện thoại và bấm <strong>[XÁC NHẬN ĐĂNG NHẬP]</strong></span>
               </p>
             </div>
           </div>
@@ -108,14 +110,29 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
         {/* State 4: Expired or Error - Show clearly */}
         {(status === 'expired' || status === 'declined' || status === 'error') && (
           <div className="space-y-3 py-4 max-w-xs">
-            <div className="w-12 h-12 bg-danger/20 border border-danger/40 text-danger rounded-full flex items-center justify-center mx-auto text-xl">
-              ⚠️
+            <div className="w-12 h-12 bg-danger/20 border border-danger/40 text-danger rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-danger">
-                {status === 'expired' && '⏰ Mã QR đã hết hạn!'}
-                {status === 'declined' && '❌ Đã bị từ chối đăng nhập!'}
-                {status === 'error' && '❌ Đăng nhập không thành công'}
+              <h4 className="text-sm font-bold text-danger flex items-center justify-center gap-2">
+                {status === 'expired' && (
+                  <>
+                    <Clock className="w-4 h-4" />
+                    <span>Mã QR đã hết hạn!</span>
+                  </>
+                )}
+                {status === 'declined' && (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    <span>Đã bị từ chối đăng nhập!</span>
+                  </>
+                )}
+                {status === 'error' && (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    <span>Đăng nhập không thành công</span>
+                  </>
+                )}
               </h4>
               <p className="text-xs text-gray-400 mt-1">
                 {qrState?.error || 'Vui lòng bấm nút bên dưới để tạo mã QR mới.'}
@@ -123,9 +140,10 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
             </div>
             <button
               onClick={() => onLogin(true)}
-              className="btn btn-primary text-sm py-2 px-6 w-full shadow-lg"
+              className="btn btn-primary text-sm py-2 px-6 w-full shadow-lg flex items-center justify-center gap-2"
             >
-              🔄 Tạo mã QR mới
+              <RefreshCw className="w-4 h-4" />
+              <span>Tạo mã QR mới</span>
             </button>
           </div>
         )}
@@ -158,7 +176,7 @@ export default function LoginSection({ isLoading, qrState, onLogin, onImportAcco
               onClick={onImportAccount}
               className="w-full btn bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm py-3 px-4 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
             >
-              <span className="text-lg">📥</span>
+              <Download className="w-5 h-5" />
               <span className="font-semibold">Nhập tài khoản Zalo đã xuất</span>
             </button>
             <p className="text-xs text-center text-gray-400">

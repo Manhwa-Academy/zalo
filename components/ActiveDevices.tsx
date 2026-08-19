@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ConfirmModal from './ConfirmModal'
+import { Smartphone, Monitor, Tablet, Watch, LogOut, RefreshCw } from 'lucide-react'
 
 interface Device {
   id: string
@@ -97,10 +98,10 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
 
   const getDeviceIcon = (type: string) => {
     switch (type?.toLowerCase()) {
-      case 'mobile': return '📱'
-      case 'tablet': return '💻'
-      case 'desktop': return '🖥️'
-      default: return '📟'
+      case 'mobile': return <Smartphone className="w-5 h-5" />
+      case 'tablet': return <Tablet className="w-5 h-5" />
+      case 'desktop': return <Monitor className="w-5 h-5" />
+      default: return <Watch className="w-5 h-5" />
     }
   }
 
@@ -168,7 +169,7 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold flex items-center gap-2">
-          <span>📱</span>
+          <Smartphone className="w-5 h-5 text-primary" />
           <span>Thiết bị đang đăng nhập</span>
           <span className="text-sm font-normal text-gray-400">({devices.length})</span>
         </h3>
@@ -176,9 +177,10 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
         {devices.length > 1 && (
           <button
             onClick={onLogoutAllDevices}
-            className="btn btn-danger text-xs px-3 py-1.5"
+            className="btn btn-danger text-xs px-3 py-1.5 flex items-center gap-1"
           >
-            🚫 Đăng xuất tất cả
+            <LogOut className="w-3.5 h-3.5" />
+            Đăng xuất tất cả
           </button>
         )}
       </div>
@@ -251,9 +253,10 @@ export default function ActiveDevices({ onLogoutDevice, onLogoutAllDevices }: Ac
       <div className="mt-4 pt-4 border-t border-white/10">
         <button
           onClick={loadDevices}
-          className="btn btn-secondary text-xs w-full"
+          className="btn btn-secondary text-xs w-full flex items-center justify-center gap-1"
         >
-          🔄 Làm mới
+          <RefreshCw className="w-3.5 h-3.5" />
+          Làm mới
         </button>
       </div>
 

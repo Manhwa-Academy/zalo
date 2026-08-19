@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { User, Phone, Hash, AlertTriangle, Edit2, Save, X } from 'lucide-react'
 
 interface UserProfileProps {
   userInfo: any
@@ -18,7 +19,10 @@ export default function UserProfile({ userInfo, onUpdateName }: UserProfileProps
 
   return (
     <div className="card">
-      <h3 className="text-lg font-bold mb-4">Thông tin tài khoản</h3>
+      <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+        <User className="w-5 h-5 text-primary" />
+        Thông tin tài khoản
+      </h3>
       
       <div className="flex items-center space-x-4">
         {userInfo?.avatar ? (
@@ -48,17 +52,19 @@ export default function UserProfile({ userInfo, onUpdateName }: UserProfileProps
                 maxLength={50}
               />
               <div className="flex space-x-2">
-                <button onClick={handleSave} className="btn btn-success text-sm">
-                  💾 Lưu
+                <button onClick={handleSave} className="btn btn-success text-sm flex items-center gap-1">
+                  <Save className="w-4 h-4" />
+                  Lưu
                 </button>
                 <button 
                   onClick={() => {
                     setIsEditing(false)
                     setNewName(userInfo?.displayName || '')
                   }}
-                  className="btn bg-dark-300 text-sm"
+                  className="btn bg-dark-300 text-sm flex items-center gap-1"
                 >
-                  ❌ Hủy
+                  <X className="w-4 h-4" />
+                  Hủy
                 </button>
               </div>
             </div>
@@ -71,9 +77,7 @@ export default function UserProfile({ userInfo, onUpdateName }: UserProfileProps
                   className="text-gray-400 hover:text-primary transition-colors"
                   title="Sửa tên"
                 >
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                  </svg>
+                  <Edit2 className="w-4 h-4" />
                 </button>
               </div>
               <p className="text-sm text-gray-400">
@@ -86,18 +90,27 @@ export default function UserProfile({ userInfo, onUpdateName }: UserProfileProps
       
       <div className="mt-4 grid grid-cols-2 gap-3">
         <div className="p-3 bg-dark-300 rounded-lg">
-          <p className="text-xs text-gray-400">Số điện thoại</p>
+          <p className="text-xs text-gray-400 flex items-center gap-1">
+            <Phone className="w-3 h-3" />
+            Số điện thoại
+          </p>
           <p className="font-medium">{userInfo?.phoneNumber || 'N/A'}</p>
         </div>
         <div className="p-3 bg-dark-300 rounded-lg">
-          <p className="text-xs text-gray-400">User ID</p>
+          <p className="text-xs text-gray-400 flex items-center gap-1">
+            <Hash className="w-3 h-3" />
+            User ID
+          </p>
           <p className="font-mono text-xs truncate">{userInfo?.userId || 'Unknown'}</p>
         </div>
       </div>
       
       <div className="mt-4 p-3 bg-warning/10 rounded-lg border border-warning/30">
-        <p className="text-xs text-warning">
-          ⚠️ <strong>Lưu ý:</strong> Nếu tên hiển thị không đúng, bạn có thể sửa bằng cách click biểu tượng bút chì bên cạnh tên.
+        <p className="text-xs text-warning flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            <strong>Lưu ý:</strong> Nếu tên hiển thị không đúng, bạn có thể sửa bằng cách click biểu tượng bút chì bên cạnh tên.
+          </span>
         </p>
       </div>
     </div>

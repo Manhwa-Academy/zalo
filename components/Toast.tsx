@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react'
 
 export interface ToastProps {
   message: string
@@ -17,10 +18,10 @@ export default function Toast({ message, type = 'success', duration = 3000, onCl
   }, [duration, onClose])
 
   const icons = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️',
-    warning: '⚠️',
+    success: <CheckCircle className="w-6 h-6" />,
+    error: <XCircle className="w-6 h-6" />,
+    info: <Info className="w-6 h-6" />,
+    warning: <AlertTriangle className="w-6 h-6" />,
   }
 
   const colors = {
@@ -48,7 +49,7 @@ export default function Toast({ message, type = 'success', duration = 3000, onCl
           transition-all duration-300 ease-out
         `}
       >
-        <span className="text-2xl flex-shrink-0">{icons[type]}</span>
+        <span className={`flex-shrink-0 ${textColors[type]}`}>{icons[type]}</span>
         <p className={`text-sm font-semibold ${textColors[type]} flex-1`}>
           {message}
         </p>
@@ -56,7 +57,7 @@ export default function Toast({ message, type = 'success', duration = 3000, onCl
           onClick={onClose}
           className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
         >
-          ✕
+          <X className="w-4 h-4" />
         </button>
       </div>
     </div>

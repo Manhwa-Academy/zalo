@@ -15,7 +15,7 @@ export async function getAllSessionsForZaloUser(zaloUserId: string): Promise<str
   try {
     // Find all sessions that have the same Zalo user ID in their user_info
     const result = await pool.query(`
-      SELECT DISTINCT u.id as user_id
+      SELECT DISTINCT u.id as user_id, u.last_active
       FROM users u
       JOIN zalo_sessions zs ON zs.user_id = u.id
       WHERE zs.user_info->>'userId' = $1
@@ -47,16 +47,20 @@ export async function getMessagesForZaloUser(
     
     console.log(`📱 [Sync] Found ${sessions.length} sessions for Zalo user ${zaloUserId}`)
     
-    // Query messages from ALL sessions, ordered by timestamp, deduplicated by msg_id
+    // Query messages from ALL sessions, ordered by timestamp ASC (oldest first)
+    // Use subquery to first get unique messages, then sort correctly
     const result = await pool.query(`
-      SELECT DISTINCT ON (msg_id, cli_msg_id)
-        id, user_id, msg_id, cli_msg_id, thread_id, content,
-        message_type, sender_id, sender_name, is_self, timestamp,
-        created_at, replied, is_undo, metadata
-      FROM messages
-      WHERE user_id = ANY($1)
-        AND thread_id = $2
-      ORDER BY msg_id DESC, cli_msg_id DESC, timestamp DESC
+      SELECT * FROM (
+        SELECT DISTINCT ON (msg_id, cli_msg_id)
+          id, user_id, msg_id, cli_msg_id, thread_id, content,
+          message_type, sender_id, sender_name, is_self, timestamp,
+          created_at, replied, is_undo, metadata
+        FROM zalo_messages
+        WHERE user_id = ANY($1)
+          AND thread_id = $2
+        ORDER BY msg_id DESC, cli_msg_id DESC, timestamp DESC
+      ) AS unique_messages
+      ORDER BY timestamp ASC
       LIMIT $3
     `, [sessions, threadId, limit])
     
@@ -108,12 +112,14 @@ export async function saveMessageToAllSessions(
     for (const sessionUserId of sessions) {
       try {
         await pool.query(`
-          INSERT INTO messages (
+          INSERT INTO zalo_messages (
             user_id, msg_id, cli_msg_id, thread_id, content,
             message_type, sender_id, sender_name, is_self, timestamp,
             replied, is_undo, metadata
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10 / 1000.0), $11, $12, $13)
-          ON CONFLICT (user_id, msg_id) DO UPDATE SET
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          ON CONFLICT (user_id, thread_id, msg_id) 
+          WHERE msg_id IS NOT NULL
+          DO UPDATE SET
             content = EXCLUDED.content,
             is_undo = EXCLUDED.is_undo,
             metadata = EXCLUDED.metadata

@@ -1,94 +1,141 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
-import fs from 'fs'
-import path from 'path'
-import os from 'os'
+import { v2 as cloudinary } from 'cloudinary'
 
-/**
- * POST - Gửi tin nhắn thoại (voice message)
- * API: sendVoice(options: { voiceUrl, ttl? }, threadId, type?)
- * Pattern: Upload file first -> get voiceUrl -> send with voiceUrl
- */
-export async function POST(request: Request) {
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+})
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+export async function POST(request: NextRequest) {
   try {
-    const zaloApi = await getCurrentZaloApi()
-    if (!zaloApi) {
-      return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
-    }
-
     const formData = await request.formData()
+    const audioFile = formData.get('audio') as File
     const threadId = formData.get('threadId') as string
-    const threadType = Number(formData.get('threadType') || 0)
-    const file = formData.get('audio') as File | null
-    const ttl = Number(formData.get('ttl') || 0) // Time to live, default 0 (unlimited)
-    
-    if (!threadId || !file) {
-      return NextResponse.json({ 
-        error: 'Missing threadId or audio file' 
-      }, { status: 400 })
+    const threadType = parseInt(formData.get('threadType') as string) || 0
+
+    if (!audioFile) {
+      return NextResponse.json({ success: false, error: 'No audio file provided' }, { status: 400 })
     }
 
-    console.log('🎤 [Send Voice] Step 1: Uploading voice file:', { 
-      threadId, 
-      threadType, 
-      fileName: file.name,
-      fileSize: file.size,
-      ttl
+    if (!threadId) {
+      return NextResponse.json({ success: false, error: 'Thread ID is required' }, { status: 400 })
+    }
+
+    const api = await getCurrentZaloApi()
+    if (!api) {
+      return NextResponse.json({ success: false, error: 'Zalo client not available' }, { status: 401 })
+    }
+
+    // Convert File to Buffer
+    const arrayBuffer = await audioFile.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+
+    console.log('📤 Uploading voice to Cloudinary:', {
+      fileName: audioFile.name,
+      fileSize: audioFile.size,
+      mimeType: audioFile.type
     })
 
-    // Save audio to temp file
-    const tempDir = os.tmpdir()
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const filePath = path.join(tempDir, `zalo_voice_${Date.now()}_${safeName}`)
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    fs.writeFileSync(filePath, buffer)
+    // Upload to Cloudinary
+    const uploadResult = await new Promise<any>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: 'video', // 'video' resource type supports audio files
+          folder: 'zalo-voice-messages',
+          public_id: `voice_${Date.now()}`,
+          format: 'mp3', // Convert to MP3 for better compatibility
+          quality: 'auto'
+        },
+        (error, result) => {
+          if (error) reject(error)
+          else resolve(result)
+        }
+      )
+      
+      uploadStream.end(buffer)
+    })
 
-    console.log('💾 [Send Voice] Saved to temp:', filePath)
-
-    // Step 1: Upload file to get voiceUrl
-    const uploadResult = await zaloApi.uploadAttachment(filePath, threadId, threadType)
-    console.log('📤 [Send Voice] Upload result:', uploadResult)
-
-    // Extract voiceUrl from upload result
-    let voiceUrl: string
-    if (Array.isArray(uploadResult)) {
-      voiceUrl = uploadResult[0]?.fileUrl || uploadResult[0]?.normalUrl
-    } else {
-      voiceUrl = uploadResult.fileUrl || uploadResult.normalUrl
-    }
-
-    if (!voiceUrl) {
-      throw new Error('Failed to get voiceUrl from upload result')
-    }
-
-    console.log('🎤 [Send Voice] Step 2: Sending voice message with URL:', voiceUrl)
-
-    // Step 2: Send voice message with voiceUrl
-    const options = {
-      voiceUrl,
-      ttl
-    }
-    const result = await zaloApi.sendVoice(options, threadId, threadType)
+    const voiceUrl = uploadResult.secure_url
     
-    console.log('✅ [Send Voice] Result:', result)
+    console.log('✅ Voice uploaded to Cloudinary:', {
+      url: voiceUrl,
+      duration: uploadResult.duration,
+      format: uploadResult.format
+    })
 
-    // Clean up temp file
-    try {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-    } catch (e) {
-      console.warn('Failed to delete temp voice file:', e)
-    }
-
-    return NextResponse.json({ 
-      success: true,
-      result,
+    console.log('📤 Sending voice message via Zalo:', {
+      threadId,
+      threadType,
       voiceUrl
     })
+
+    // Send voice message using zca-js API
+    const result = await api.sendVoice(
+      {
+        voiceUrl: voiceUrl,
+        ttl: 0 // 0 = vô hạn
+      },
+      threadId,
+      threadType
+    )
+
+    console.log('✅ Voice message sent:', result)
+
+    // Save message to database with Cloudinary ID for cleanup later
+    try {
+      const { getCurrentUserId, getCurrentZaloUserInfo } = await import('@/lib/multi-user-zalo')
+      const { saveMessage } = await import('@/lib/messages-db')
+      const userId = await getCurrentUserId()
+      const userInfo = await getCurrentZaloUserInfo()
+      
+      if (userId && userInfo) {
+        await saveMessage(userId, {
+          msgId: result.msgId,
+          threadId: threadId,
+          content: JSON.stringify({
+            type: 'voice',
+            voiceUrl: voiceUrl,
+            cloudinaryId: uploadResult.public_id, // Save for cleanup
+            duration: uploadResult.duration
+          }),
+          messageType: 'voice',
+          senderId: userInfo.userId || '',
+          senderName: userInfo.displayName || '',
+          isSelf: true,
+          timestamp: Date.now(),
+          avatar: userInfo.avatar
+        })
+        console.log('💾 Saved voice message to database with Cloudinary ID')
+      }
+    } catch (dbError) {
+      console.error('⚠️ Failed to save message to DB:', dbError)
+      // Don't fail the request if DB save fails
+    }
+
+    return NextResponse.json({
+      success: true,
+      result: {
+        msgId: result.msgId,
+        voiceUrl: voiceUrl,
+        cloudinaryId: uploadResult.public_id
+      }
+    })
+
   } catch (error: any) {
-    console.error('❌ [Send Voice] Error:', error)
-    return NextResponse.json({ 
-      error: error.message || 'Failed to send voice message' 
-    }, { status: 500 })
+    console.error('❌ Error sending voice message:', error)
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: error.message || 'Failed to send voice message',
+        details: error.toString()
+      }, 
+      { status: 500 }
+    )
   }
 }

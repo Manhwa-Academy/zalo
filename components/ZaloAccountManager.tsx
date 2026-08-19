@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Shield, Upload, Lock, Settings, MessageSquare, User, Download, Info, AlertCircle } from 'lucide-react'
 
 interface ZaloAccountManagerProps {
   onImportSuccess?: () => void
@@ -57,7 +58,7 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
   return (
     <div className="card">
       <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-        <span>🔐</span>
+        <Shield className="w-5 h-5 text-primary" />
         <span>Quản lý Tài khoản Zalo</span>
       </h3>
 
@@ -85,21 +86,42 @@ export default function ZaloAccountManager({ onImportSuccess }: ZaloAccountManag
           disabled={isExporting}
           className="btn btn-primary flex items-center justify-center gap-2 min-w-[200px]"
         >
-          <span>📤</span>
+          <Upload className="w-4 h-4" />
           <span>{isExporting ? 'Đang xuất...' : 'Xuất tài khoản'}</span>
         </button>
       </div>
 
       {/* Info Box */}
       <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
-        <p className="text-xs text-blue-300 font-semibold mb-2">💡 Nội dung backup bao gồm:</p>
+        <p className="text-xs text-blue-300 font-semibold mb-2 flex items-center gap-1">
+          <Info className="w-4 h-4" />
+          Nội dung backup bao gồm:
+        </p>
         <ul className="text-xs text-gray-400 space-y-1">
-          <li>• <strong>🔐 Credentials:</strong> Thông tin đăng nhập Zalo</li>
-          <li>• <strong>⚙️ Bot Settings:</strong> Cấu hình bot (auto-reply, AI, whitelist...)</li>
-          <li>• <strong>💬 Messages:</strong> 100 tin nhắn gần đây nhất</li>
-          <li>• <strong>👤 User Info:</strong> Thông tin profile (tên, avatar...)</li>
-          <li>• <strong>📥 Nhập:</strong> Sử dụng nút "Nhập tài khoản" ở trang đăng nhập (QR page)</li>
-          <li>• <strong>🔒 Bảo mật:</strong> Không chia sẻ file này cho người khác!</li>
+          <li className="flex items-start gap-2">
+            <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>Credentials:</strong> Thông tin đăng nhập Zalo</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <Settings className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>Bot Settings:</strong> Cấu hình bot (auto-reply, AI, whitelist...)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <MessageSquare className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>Messages:</strong> 100 tin nhắn gần đây nhất</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <User className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>User Info:</strong> Thông tin profile (tên, avatar...)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <Download className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>Nhập:</strong> Sử dụng nút "Nhập tài khoản" ở trang đăng nhập (QR page)</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <span><strong>Bảo mật:</strong> Không chia sẻ file này cho người khác!</span>
+          </li>
         </ul>
       </div>
     </div>

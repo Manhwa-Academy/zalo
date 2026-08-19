@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MessageSquare } from 'lucide-react'
 
 interface ZaloImportModalProps {
   onClose: () => void
@@ -127,7 +128,7 @@ export default function ZaloImportModal({ onClose, onSuccess }: ZaloImportModalP
                 )}
                 {successDetails.messageCount > 0 && (
                   <div className="flex items-center gap-2 text-purple-300">
-                    <span className="text-lg">💬</span>
+                    <MessageSquare className="w-5 h-5" />
                     <span className="text-sm font-medium">Đã khôi phục {successDetails.messageCount} tin nhắn</span>
                   </div>
                 )}

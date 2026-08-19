@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import GeminiSettings from './GeminiSettings'
+import { Bot, Save, Bell, Settings, LogOut, Ban, X, ChevronDown, Sparkles, Lock, Info, AlertTriangle, CheckCircle, XCircle, Wrench } from 'lucide-react'
+import Toast from './Toast'
 
 interface HeaderProps {
   userInfo: any
@@ -27,6 +29,11 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  
+  // Toast state
+  const [showToast, setShowToast] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'warning'>('success')
   
   // Settings state
   const [settings, setSettings] = useState<AppSettings>({
@@ -68,16 +75,21 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.settings) {
+          // Set settings từ database
           setSettings(data.settings)
           console.log('✅ [Header] Loaded settings from database:', data.settings)
           
           // Check if replyDelay is a custom value (not in default options)
           const defaultDelays = [0, 2, 5, 10, 15, 20, 30]
-          const replyDelay = data.settings.replyDelay || 2
+          const replyDelay = data.settings.replyDelay !== undefined ? data.settings.replyDelay : 2
+          
           if (!defaultDelays.includes(replyDelay)) {
             // Custom delay detected
             setCustomDelayMode(true)
             setCustomDelayValue(replyDelay.toString())
+          } else {
+            // Standard delay - make sure state is in sync
+            setCustomDelayMode(false)
           }
         }
       }
@@ -148,6 +160,8 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
 
   const saveSettings = async () => {
     try {
+      console.log('💾 [Header] Saving settings to database:', settings)
+      
       // Save to database
       const response = await fetch('/api/settings', {
         method: 'POST',
@@ -159,13 +173,21 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
         throw new Error('Failed to save settings')
       }
 
+      const result = await response.json()
+      console.log('✅ [Header] Settings saved successfully:', result)
+
       // Apply settings
       applySettings()
       
       // Close modal
       setShowSettingsModal(false)
       
-      // Show success notification
+      // Show success toast
+      setToastMessage('✅ Cài đặt đã được lưu thành công!')
+      setToastType('success')
+      setShowToast(true)
+      
+      // Show browser notification (optional)
       if (notifPermission === 'granted') {
         try {
           new Notification('⚙️ Cài đặt đã lưu', {
@@ -174,11 +196,13 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
           })
         } catch (e) {}
       }
-
-      console.log('✅ [Header] Settings saved to database')
     } catch (error) {
       console.error('❌ [Header] Failed to save settings:', error)
-      alert('Lỗi: Không thể lưu cài đặt. Vui lòng thử lại!')
+      
+      // Show error toast
+      setToastMessage('❌ Không thể lưu cài đặt. Vui lòng thử lại!')
+      setToastType('error')
+      setShowToast(true)
     }
   }
 
@@ -235,7 +259,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                 : 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
             }`}
           >
-            <span>🔔</span>
+            <Bell className="w-4 h-4" />
             <span className="hidden sm:inline">
               {notifPermission === 'granted' ? 'Thông báo: BẬT' : 'Bật thông báo'}
             </span>
@@ -254,14 +278,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                 <p className="font-medium text-xs truncate max-w-[120px]">{userInfo.displayName || 'User'}</p>
                 <p className="text-[10px] text-gray-400">{userInfo.phoneNumber || 'N/A'}</p>
               </div>
-              <svg
-                className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
             {/* Dropdown Menu - Fixed z-index and positioning */}
@@ -273,7 +290,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                     onClick={handleSettings}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
                   >
-                    <span className="text-lg">⚙️</span>
+                    <Settings className="w-4 h-4" />
                     <span>Cài đặt</span>
                   </button>
 
@@ -284,7 +301,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                     onClick={handleLogout}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-white"
                   >
-                    <span className="text-lg">🚪</span>
+                    <LogOut className="w-4 h-4" />
                     <span>Đăng xuất thiết bị này</span>
                   </button>
 
@@ -293,7 +310,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                     onClick={handleLogoutAllDevices}
                     className="w-full px-4 py-2.5 text-left text-sm hover:bg-red-500/10 transition-colors flex items-center gap-3 text-red-400 hover:text-red-300"
                   >
-                    <span className="text-lg">🚫</span>
+                    <Ban className="w-4 h-4" />
                     <span>Đăng xuất tất cả thiết bị</span>
                   </button>
                 </div>
@@ -306,27 +323,27 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
       {/* Settings Modal */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-4 animate-fadeIn" onClick={() => setShowSettingsModal(false)}>
-          <div className="bg-dark-100 border border-white/20 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-dark-100 border border-white/20 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-scaleIn" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
-            <div className="px-6 py-4 bg-gradient-to-r from-primary/20 to-secondary/20 border-b border-white/10 flex items-center justify-between">
+            <div className="px-6 py-4 bg-gradient-to-r from-primary/20 to-secondary/20 border-b border-white/10 flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">⚙️</span>
+                <Settings className="w-6 h-6 text-primary" />
                 <h2 className="text-xl font-bold text-white">Cài đặt</h2>
               </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
                 className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-gray-300 hover:text-white"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)] space-y-5">
+            {/* Content - Scrollable */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
               {/* Notification Settings */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>🔔</span>
+                  <Bell className="w-4 h-4 text-primary" />
                   <span>Thông báo</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
@@ -343,7 +360,14 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                           : 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
                       }`}
                     >
-                      {notifPermission === 'granted' ? '✅ Đã bật' : 'Bật thông báo'}
+                      {notifPermission === 'granted' ? (
+                        <span className="flex items-center gap-1.5">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Đã bật
+                        </span>
+                      ) : (
+                        'Bật thông báo'
+                      )}
                     </button>
                   </div>
                   
@@ -368,7 +392,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               {/* Auto Reply Settings */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>🤖</span>
+                  <Bot className="w-5 h-5 text-primary" />
                   <span>Tự động trả lời</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
@@ -395,12 +419,15 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                         value={customDelayMode ? 'custom' : ([0, 2, 5, 10, 15, 20, 30].includes(settings.replyDelay) ? settings.replyDelay : 'custom')}
                         onChange={(e) => {
                           const value = e.target.value
+                          console.log('🔧 [Header] Delay dropdown changed to:', value)
                           if (value === 'custom') {
                             setCustomDelayMode(true)
                             setCustomDelayValue(settings.replyDelay.toString())
                           } else {
                             setCustomDelayMode(false)
-                            setSettings({...settings, replyDelay: Number(value)})
+                            const newDelay = Number(value)
+                            setSettings({...settings, replyDelay: newDelay})
+                            console.log('✅ [Header] Updated replyDelay state to:', newDelay)
                           }
                         }}
                       >
@@ -439,8 +466,10 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                           <button
                             onClick={() => {
                               const delay = Number(customDelayValue)
+                              console.log('✅ [Header] Custom delay OK clicked, value:', delay)
                               if (delay >= 0 && delay <= 60) {
                                 setSettings({...settings, replyDelay: delay})
+                                console.log('✅ [Header] Updated settings.replyDelay to:', delay)
                                 setCustomDelayMode(false)
                               } else {
                                 alert('Vui lòng nhập số từ 0 đến 60 giây')
@@ -517,7 +546,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               {/* Gemini AI Settings */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>✨</span>
+                  <Sparkles className="w-4 h-4 text-primary" />
                   <span>Cấu hình Gemini AI</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4">
@@ -533,7 +562,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               {/* Display Settings */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>🎨</span>
+                  <Sparkles className="w-4 h-4 text-primary" />
                   <span>Giao diện</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
@@ -586,7 +615,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               {/* Data & Privacy */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>🔒</span>
+                  <Lock className="w-4 h-4 text-primary" />
                   <span>Dữ liệu & Bảo mật</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-3">
@@ -628,7 +657,7 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               {/* About */}
               <div className="space-y-3">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <span>ℹ️</span>
+                  <Info className="w-4 h-4 text-primary" />
                   <span>Thông tin</span>
                 </h3>
                 <div className="bg-dark-200/50 border border-white/10 rounded-xl p-4 space-y-2">
@@ -652,21 +681,41 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-400">User Settings</span>
-                        <span className={`text-xs font-medium ${debugInfo.hasUserSettings ? 'text-success' : 'text-error'}`}>
-                          {debugInfo.hasUserSettings ? '✅ Có' : '❌ Không'}
+                        <span className={`text-xs font-medium flex items-center gap-1 ${debugInfo.hasUserSettings ? 'text-success' : 'text-error'}`}>
+                          {debugInfo.hasUserSettings ? (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>Có</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Không</span>
+                            </>
+                          )}
                         </span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-gray-400">Bot Settings</span>
-                        <span className={`text-xs font-medium ${debugInfo.hasBotSettings ? 'text-success' : 'text-error'}`}>
-                          {debugInfo.hasBotSettings ? '✅ Có' : '❌ Không'}
+                        <span className={`text-xs font-medium flex items-center gap-1 ${debugInfo.hasBotSettings ? 'text-success' : 'text-error'}`}>
+                          {debugInfo.hasBotSettings ? (
+                            <>
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>Có</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3.5 h-3.5" />
+                              <span>Không</span>
+                            </>
+                          )}
                         </span>
                       </div>
                       
                       {(!debugInfo.hasUserSettings || !debugInfo.hasBotSettings) && (
                         <div className="pt-2 border-t border-warning/30 bg-warning/5 -mx-4 -mb-4 mt-2 px-4 py-3 rounded-b-xl">
                           <p className="text-xs text-warning flex items-start gap-2 mb-2">
-                            <span className="flex-shrink-0">⚠️</span>
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                             <span>
                               <strong>Thiếu cấu hình:</strong> Bạn thiếu settings trong database. Click nút bên dưới để tự động tạo.
                             </span>
@@ -686,9 +735,10 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
                                 alert('❌ Lỗi khi tạo settings')
                               }
                             }}
-                            className="w-full bg-warning hover:bg-warning/80 text-black font-medium px-3 py-2 rounded-lg text-xs transition-colors"
+                            className="w-full bg-warning hover:bg-warning/80 text-black font-medium px-3 py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-2"
                           >
-                            🔧 Tự động tạo Settings
+                            <Wrench className="w-4 h-4" />
+                            <span>Tự động tạo Settings</span>
                           </button>
                         </div>
                       )}
@@ -706,8 +756,8 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 py-4 bg-dark-200/50 border-t border-white/10 flex justify-end gap-3">
+            {/* Footer - Fixed at bottom */}
+            <div className="px-6 py-4 bg-dark-200/50 border-t border-white/10 flex justify-end gap-3 flex-shrink-0">
               <button
                 onClick={() => setShowSettingsModal(false)}
                 className="px-5 py-2.5 rounded-xl bg-dark-300 hover:bg-dark-200 text-white text-sm font-medium transition-all border border-white/10"
@@ -716,13 +766,24 @@ export default function Header({ userInfo, onLogout, onLogoutAllDevices }: Heade
               </button>
               <button
                 onClick={saveSettings}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:brightness-110 text-white text-sm font-medium transition-all shadow-lg"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:brightness-110 text-white text-sm font-medium transition-all shadow-lg flex items-center justify-center gap-2"
               >
-                💾 Lưu thay đổi
+                <Save className="w-4 h-4" />
+                Lưu thay đổi
               </button>
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Toast Notification */}
+      {showToast && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          duration={3000}
+          onClose={() => setShowToast(false)}
+        />
       )}
     </header>
   )

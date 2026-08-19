@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { Bot, Sparkles, Brain, HelpCircle, MessageSquare, Zap, Ruler, Save, AlertCircle, Info, Hand } from 'lucide-react'
 
 interface AISettingsProps {
   aiEnabled: boolean
@@ -85,7 +86,8 @@ export default function AISettings({
   const triggerModes = [
     { 
       value: 'smart', 
-      label: '🧠 Thông minh', 
+      label: 'Thông minh',
+      icon: Brain,
       desc: 'Tự động phát hiện câu hỏi & tin >= 3 từ',
       detail: 'AI tự động nhận diện:\n• Câu hỏi (có từ: sao, gì, nào, ai...)\n• Tin nhắn dài (>= 3 từ)\n• Yêu cầu giúp đỡ',
       demo: [
@@ -96,7 +98,8 @@ export default function AISettings({
     },
     { 
       value: 'questions', 
-      label: '❓ Chỉ câu hỏi', 
+      label: 'Chỉ câu hỏi',
+      icon: HelpCircle,
       desc: 'Chỉ reply khi có dấu ?',
       detail: 'AI chỉ trả lời khi tin nhắn có dấu chấm hỏi (?)',
       demo: [
@@ -107,7 +110,8 @@ export default function AISettings({
     },
     { 
       value: 'always', 
-      label: '⚡ Luôn luôn', 
+      label: 'Luôn luôn',
+      icon: Zap,
       desc: 'Mọi tin nhắn đều dùng AI',
       detail: 'AI trả lời TẤT CẢ tin nhắn, kể cả tin ngắn như "Ok", "Ừ"',
       demo: [
@@ -118,7 +122,8 @@ export default function AISettings({
     },
     { 
       value: 'manual', 
-      label: '✋ Thủ công', 
+      label: 'Thủ công',
+      icon: Hand,
       desc: 'Chỉ khi bật AI manually',
       detail: 'AI TẮT - Luôn dùng tin nhắn mặc định/preset',
       demo: [
@@ -137,9 +142,12 @@ export default function AISettings({
       <div className="flex items-center justify-between">
         <div className="flex-1">
           <h3 className="text-lg font-bold flex items-center gap-2">
-            <span>🤖</span>
+            <Bot className="w-5 h-5 text-primary" />
             <span>AI Trả Lời Thông Minh</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">Gemini 3.1 Flash Lite</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              Gemini 3.1 Flash Lite
+            </span>
           </h3>
           <p className="text-xs text-gray-400 mt-1">
             Powered by Google Gemini - Hiểu context & cá nhân hóa theo từng user
@@ -165,22 +173,24 @@ export default function AISettings({
       {aiEnabled ? (
         <div className="p-3 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-primary-light">
-            <span className="text-base">🤖</span>
+            <Bot className="w-5 h-5" />
             <span className="font-medium">
               AI đang <strong>BẬT</strong> - Bot sẽ trả lời thông minh dựa trên context
             </span>
           </div>
           <button
             onClick={() => setShowInfo(!showInfo)}
-            className="text-xs text-primary hover:underline font-bold"
+            className="text-xs text-primary hover:underline font-bold flex items-center gap-1"
           >
+            <Info className="w-3.5 h-3.5" />
             {showInfo ? 'Ẩn' : 'Chi tiết'}
           </button>
         </div>
       ) : (
-        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-xl">
+        <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-xl flex items-center justify-center gap-2">
+          <AlertCircle className="w-4 h-4 text-gray-400" />
           <p className="text-xs text-gray-400 text-center">
-            ⚠️ AI Reply đang TẮT - Bot sẽ dùng tin nhắn mặc định/preset
+            AI Reply đang TẮT - Bot sẽ dùng tin nhắn mặc định/preset
           </p>
         </div>
       )}
@@ -204,8 +214,9 @@ export default function AISettings({
         <div className="space-y-4 pt-2 border-t border-dark-300">
           {/* Personality */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              🎭 Tính cách AI
+            <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Tính cách AI
             </label>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {personalities.map((p) => (
@@ -226,17 +237,22 @@ export default function AISettings({
                     className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark-100 text-primary text-xs font-bold flex items-center justify-center hover:bg-primary hover:text-white transition-colors"
                     title="Xem demo"
                   >
-                    ?
+                    <HelpCircle className="w-3.5 h-3.5" />
                   </button>
                   {showPersonalityDemo === p.value && (
                     <div className="absolute z-10 top-full left-0 right-0 mt-2 p-3 bg-dark-100 border border-primary rounded-xl shadow-2xl animate-slideIn">
-                      <p className="text-[10px] text-gray-400 mb-2">💬 Demo chat:</p>
+                      <p className="text-[10px] text-gray-400 mb-2 flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" />
+                        Demo chat:
+                      </p>
                       <div className="space-y-2">
                         <div className="bg-dark-300 p-2 rounded-lg">
                           <p className="text-[10px] text-gray-300">👤 User: {p.demo.user}</p>
                         </div>
                         <div className="bg-primary/20 p-2 rounded-lg">
-                          <p className="text-[10px] text-white">🤖 AI: {p.demo.ai}</p>
+                          <p className="text-[10px] text-white flex items-start gap-1">
+                            <Bot className="w-3 h-3 mt-0.5" /> AI: {p.demo.ai}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -248,29 +264,35 @@ export default function AISettings({
 
           {/* Trigger Mode */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              ⚡ Khi nào dùng AI?
+            <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+              <Zap className="w-4 h-4 text-primary" />
+              Khi nào dùng AI?
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {triggerModes.map((mode) => (
-                <div key={mode.value} className="relative">
-                  <button
-                    onClick={() => onAITriggerModeChange(mode.value)}
-                    className={`w-full p-3 rounded-xl text-left border transition-all ${
-                      aiTriggerMode === mode.value
-                        ? 'border-primary bg-primary/20 text-white shadow-lg'
-                        : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
-                    }`}
-                  >
-                    <p className="text-xs font-semibold">{mode.label}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{mode.desc}</p>
-                  </button>
+              {triggerModes.map((mode) => {
+                const IconComponent = mode.icon
+                return (
+                  <div key={mode.value} className="relative">
+                    <button
+                      onClick={() => onAITriggerModeChange(mode.value)}
+                      className={`w-full p-3 rounded-xl text-left border transition-all ${
+                        aiTriggerMode === mode.value
+                          ? 'border-primary bg-primary/20 text-white shadow-lg'
+                          : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white hover:border-primary/40'
+                      }`}
+                    >
+                      <p className="text-xs font-semibold flex items-center gap-2">
+                        <IconComponent className="w-4 h-4" />
+                        {mode.label}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">{mode.desc}</p>
+                    </button>
                   <button
                     onClick={() => setShowTriggerDemo(showTriggerDemo === mode.value ? null : mode.value)}
                     className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark-100 text-primary text-xs font-bold flex items-center justify-center hover:bg-primary hover:text-white transition-colors"
                     title="Xem demo"
                   >
-                    ?
+                    <HelpCircle className="w-3.5 h-3.5" />
                   </button>
                   {showTriggerDemo === mode.value && (
                     <div className="absolute z-10 top-full left-0 right-0 mt-2 p-3 bg-dark-100 border border-primary rounded-xl shadow-2xl animate-slideIn max-w-xs">
@@ -288,14 +310,16 @@ export default function AISettings({
                     </div>
                   )}
                 </div>
-              ))}
+              )
+            })}
             </div>
           </div>
 
           {/* Max Length */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              📏 Độ dài trả lời tối đa: <span className="text-primary">{aiMaxLength}</span> ký tự
+            <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+              <Ruler className="w-4 h-4 text-primary" />
+              Độ dài trả lời tối đa: <span className="text-primary">{aiMaxLength}</span> ký tự
             </label>
             <input
               type="range"
@@ -317,7 +341,10 @@ export default function AISettings({
       {/* Setup Instructions (nếu chưa có API key) */}
       {aiEnabled && !hasGeminiKey && (
         <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl">
-          <p className="text-xs text-warning font-semibold mb-2">⚠️ Cần cấu hình API Key:</p>
+          <p className="text-xs text-warning font-semibold mb-2 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4" />
+            Cần cấu hình API Key:
+          </p>
           <ol className="text-xs text-warning space-y-1 list-decimal list-inside">
             <li>Lấy free API key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" className="underline">Google AI Studio</a></li>
             <li>Thêm vào file <code className="bg-black/30 px-1 rounded">.env</code>: <code className="bg-black/30 px-1 rounded">GEMINI_API_KEY=your-key-here</code></li>

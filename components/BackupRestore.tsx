@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { Save, Upload, Download, Info, User, MessageSquare, Target, X, RefreshCw, RotateCcw } from 'lucide-react'
 
 interface BackupRestoreProps {
   onBackupComplete?: () => void
@@ -124,7 +125,7 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold flex items-center gap-2">
-              <span>💾</span>
+              <Save className="w-5 h-5 text-primary" />
               <span>Backup & Restore</span>
             </h3>
             <p className="text-xs text-gray-400 mt-1">
@@ -147,10 +148,8 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
               </>
             ) : (
               <>
-                <svg className="w-8 h-8 mb-2 text-primary" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2z"/>
-                </svg>
-                <span className="text-sm font-semibold">📤 Xuất Backup</span>
+                <Upload className="w-8 h-8 mb-2 text-primary" />
+                <span className="text-sm font-semibold">Xuất Backup</span>
                 <span className="text-xs text-gray-400 mt-1">Tải file backup về máy</span>
               </>
             )}
@@ -162,10 +161,8 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
             disabled={isImporting}
             className="btn bg-success/20 hover:bg-success/30 border border-success/40 text-white flex flex-col items-center justify-center py-6 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <svg className="w-8 h-8 mb-2 text-success" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6-.67l-2.59 2.58L9 12.5l5-5 5 5-1.41 1.41L13 11.33V21h-2z"/>
-            </svg>
-            <span className="text-sm font-semibold">📥 Nhập Backup</span>
+            <Download className="w-8 h-8 mb-2 text-success" />
+            <span className="text-sm font-semibold">Nhập Backup</span>
             <span className="text-xs text-gray-400 mt-1">Khôi phục từ file</span>
           </button>
 
@@ -181,10 +178,26 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
         {/* Info Box */}
         <div className="p-3 bg-sky-500/10 border border-sky-500/30 rounded-xl">
           <p className="text-xs text-sky-300 leading-relaxed">
-            <strong>💡 Mẹo:</strong> Sử dụng Backup để:
-            <br />• 🔄 Sync settings giữa nhiều thiết bị
-            <br />• 💾 Lưu trữ cấu hình và tin nhắn quan trọng
-            <br />• 🔁 Khôi phục nhanh khi cần thiết
+            <strong className="flex items-center gap-1">
+              <Info className="w-3.5 h-3.5" />
+              Mẹo:
+            </strong>{' '}
+            Sử dụng Backup để:
+            <br />
+            <span className="flex items-center gap-2 ml-4 mt-1">
+              <RefreshCw className="w-3 h-3" />
+              Sync settings giữa nhiều thiết bị
+            </span>
+            <br />
+            <span className="flex items-center gap-2 ml-4">
+              <Save className="w-3 h-3" />
+              Lưu trữ cấu hình và tin nhắn quan trọng
+            </span>
+            <br />
+            <span className="flex items-center gap-2 ml-4">
+              <RotateCcw className="w-3 h-3" />
+              Khôi phục nhanh khi cần thiết
+            </span>
           </p>
         </div>
       </div>
@@ -198,7 +211,7 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <span>📥</span>
+                    <Download className="w-5 h-5 text-success" />
                     <span>Xác nhận Khôi phục</span>
                   </h3>
                   <p className="text-xs text-gray-400 mt-1">
@@ -225,7 +238,10 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
                 <p className="text-xs text-gray-400 mb-2 font-semibold">📦 Thông tin Backup:</p>
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-gray-400">👤 Người dùng:</span>
+                    <span className="text-gray-400 flex items-center gap-1">
+                      <User className="w-3.5 h-3.5" />
+                      Người dùng:
+                    </span>
                     <span className="text-white font-medium">{backupPreview.userInfo?.displayName || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
@@ -235,7 +251,10 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-400">💬 Tin nhắn:</span>
+                    <span className="text-gray-400 flex items-center gap-1">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Tin nhắn:
+                    </span>
                     <span className="text-white font-medium">{backupPreview.stats?.exportedMessages || 0} tin</span>
                   </div>
                   <div className="flex justify-between">
@@ -247,7 +266,10 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
 
               {/* Options */}
               <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-300">🎯 Chọn dữ liệu cần khôi phục:</p>
+                <p className="text-xs font-semibold text-gray-300 flex items-center gap-1">
+                  <Target className="w-3.5 h-3.5" />
+                  Chọn dữ liệu cần khôi phục:
+                </p>
 
                 {/* Restore Settings */}
                 <label className="flex items-start p-3 rounded-xl border cursor-pointer transition-all hover:bg-white/5 ${restoreSettings ? 'border-primary bg-primary/10' : 'border-dark-200'}">
@@ -274,7 +296,10 @@ export default function BackupRestore({ onBackupComplete, onRestoreComplete }: B
                     className="mt-0.5 w-4 h-4 accent-primary cursor-pointer"
                   />
                   <div className="ml-3">
-                    <p className="text-sm font-semibold text-white">💬 Tin nhắn</p>
+                    <p className="text-sm font-semibold text-white flex items-center gap-1">
+                      <MessageSquare className="w-4 h-4" />
+                      Tin nhắn
+                    </p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       Khôi phục lịch sử tin nhắn ({backupPreview.stats?.exportedMessages || 0} tin) - Sẽ merge với tin nhắn hiện tại
                     </p>

@@ -39,10 +39,10 @@ export async function GET(request: Request) {
         
         if (zaloUserId) {
           console.log(`🔄 [History] Loading from all sessions for Zalo user ${zaloUserId}`)
-          dbMessages = await getMessagesForZaloUser(zaloUserId, threadId, 100)
+          dbMessages = await getMessagesForZaloUser(zaloUserId, threadId, 200)
         } else {
           // Fallback to current session only
-          dbMessages = await getThreadMessages(userId, threadId, 100)
+          dbMessages = await getThreadMessages(userId, threadId, 200)
         }
         
         console.log(`📦 [History] Loaded ${dbMessages.length} messages from database for thread ${threadId}`)
@@ -143,7 +143,7 @@ export async function GET(request: Request) {
     let dbMsgs: any[] = []
     if (userId) {
       try {
-        const dbMessages = await getThreadMessages(userId, threadId, 100)
+        const dbMessages = await getThreadMessages(userId, threadId, 200)
         dbMsgs = dbMessages.map((msg: any) => ({
           id: msg.id,
           msgId: msg.msgId,
@@ -170,7 +170,7 @@ export async function GET(request: Request) {
     if (type === 'Group' && typeof zaloApi.getGroupChatHistory === 'function') {
       // GROUP CHAT HISTORY
       try {
-        const res = await zaloApi.getGroupChatHistory(threadId, 100) // Tăng từ 50 → 100
+        const res = await zaloApi.getGroupChatHistory(threadId, 200) // Tăng từ 50 → 200
         const groupMsgs = res?.groupMsgs || res?.data?.groupMsgs || []
 
         fetchedMsgs = groupMsgs.map((m: any) => {
@@ -312,7 +312,7 @@ export async function GET(request: Request) {
     } else if (type === 'User' && typeof zaloApi.getChatHistory === 'function') {
       // USER (1-1) CHAT HISTORY
       try {
-        const res = await zaloApi.getChatHistory(threadId, 100, 0) // Tăng từ 50 → 100
+        const res = await zaloApi.getChatHistory(threadId, 200, 0) // Tăng từ 50 → 200
         const userMsgs = res?.data || res?.messages || []
 
         fetchedMsgs = userMsgs.map((m: any) => {

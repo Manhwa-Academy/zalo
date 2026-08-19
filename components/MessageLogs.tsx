@@ -1,6 +1,7 @@
 import React from 'react'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
+import { User, Users, FileText, Image as ImageIcon, Sticker } from 'lucide-react'
 
 interface MessageLog {
   id: number
@@ -42,14 +43,19 @@ function renderMessageContent(content: any): React.ReactNode {
   if (parsedObj) {
     // Sticker detection
     if (parsedObj.catId || parsedObj.cateId || parsedObj.id || parsedObj.type === 'sticker') {
-      return <span className="text-sm text-blue-400">🎭 [Nhãn dán]</span>
+      return (
+        <span className="text-sm text-blue-400 flex items-center gap-1">
+          <Sticker className="w-4 h-4" />
+          [Nhãn dán]
+        </span>
+      )
     }
 
     // File detection
     if (parsedObj.type === 'file') {
       return (
         <div className="flex items-center gap-2">
-          <span className="text-xl">📄</span>
+          <FileText className="w-5 h-5 text-primary" />
           <span className="text-sm text-gray-300">{parsedObj.name || 'Tập tin'}</span>
         </div>
       )
@@ -84,7 +90,7 @@ function renderMessageContent(content: any): React.ReactNode {
               if (parent) {
                 const fallback = document.createElement('div')
                 fallback.className = 'flex items-center gap-2'
-                fallback.innerHTML = '<span class="text-xl">🖼️</span><span class="text-sm text-gray-400">[Hình ảnh]</span>'
+                fallback.innerHTML = '<svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg><span class="text-sm text-gray-400">[Hình ảnh]</span>'
                 parent.appendChild(fallback)
               }
             }}
@@ -98,7 +104,7 @@ function renderMessageContent(content: any): React.ReactNode {
     if (isImageObject) {
       return (
         <div className="flex items-center gap-2">
-          <span className="text-xl">🖼️</span>
+          <ImageIcon className="w-5 h-5 text-gray-400" />
           <span className="text-sm text-gray-400">[Hình ảnh]</span>
         </div>
       )
@@ -226,8 +232,18 @@ export default function MessageLogs({ logs }: MessageLogsProps) {
               <div className="ml-13">
                 {renderMessageContent(log.content)}
                 <div className="flex items-center space-x-2 mt-2">
-                  <span className="text-xs text-gray-500">
-                    {log.type === 'User' ? '👤 Tin nhắn cá nhân' : '👥 Tin nhắn nhóm'}
+                  <span className="text-xs text-gray-500 flex items-center gap-1">
+                    {log.type === 'User' ? (
+                      <>
+                        <User className="w-3.5 h-3.5" />
+                        Tin nhắn cá nhân
+                      </>
+                    ) : (
+                      <>
+                        <Users className="w-3.5 h-3.5" />
+                        Tin nhắn nhóm
+                      </>
+                    )}
                   </span>
                 </div>
               </div>

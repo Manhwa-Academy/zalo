@@ -7,44 +7,55 @@ interface ReactionPickerProps {
   position?: { x: number; y: number }
 }
 
-// Zalo's most common reactions (based on zca-js Reactions enum)
+// Zalo's official reactions (based on zca-js Reactions enum)
+// Top row - Most common reactions
 const QUICK_REACTIONS = [
   { icon: '❤️', code: '/-heart', label: 'Yêu thích' },
   { icon: '👍', code: '/-strong', label: 'Thích' },
   { icon: '😂', code: ':>', label: 'Haha' },
   { icon: '😮', code: ':o', label: 'Wow' },
-  { icon: '😢', code: ':--((', label: 'Buồn' },
-  { icon: '😠', code: ':-h', label: 'Phẫn nộ' },
+  { icon: '😢', code: ':-((', label: 'Buồn' },
+  { icon: '😠', code: ':-h', label: 'Giận dữ' },
 ]
 
+// All Zalo reactions - EXCLUDING quick reactions (they're shown separately)
 const ALL_REACTIONS = [
-  { icon: '❤️', code: '/-heart', label: 'Yêu thích' },
-  { icon: '👍', code: '/-strong', label: 'Thích' },
-  { icon: '👎', code: '/-weak', label: 'Không thích' },
-  { icon: '😂', code: ':>', label: 'Haha' },
-  { icon: '😮', code: ':o', label: 'Wow' },
-  { icon: '😢', code: ':--((', label: 'Khóc' },
-  { icon: '😞', code: ';--/', label: 'Buồn' },
-  { icon: '😠', code: ':-h', label: 'Giận' },
-  { icon: '😘', code: ':-*', label: 'Hôn' },
-  { icon: '😭', code: ":')", label: 'Cảm động' },
+  // Row 1 - More expressions
   { icon: '🥰', code: ';xx', label: 'Yêu' },
+  { icon: '👎', code: '/-weak', label: 'Không thích' },
+  { icon: '🤣', code: ':))', label: 'Cười lớn' },
+  { icon: '😲', code: ':-o', label: 'Ngạc nhiên' },
+  { icon: '😭', code: ":')", label: 'Nước mắt vui' },
+  { icon: '😞', code: ';-/', label: 'Thất vọng' },
+  
+  // Row 2 - Emotions
+  { icon: '😔', code: '--b', label: 'Buồn bã' },
+  { icon: '😡', code: '&-(', label: 'Tức giận' },
+  { icon: '😘', code: ':-*', label: 'Hôn' },
+  { icon: '🥺', code: ':wipe', label: 'Khóc' },
+  { icon: '😍', code: '/-loveu', label: 'Yêu quý' },
   { icon: '😉', code: ';-)', label: 'Nháy mắt' },
-  { icon: '😎', code: 'x-)', label: 'Ngầu' },
+  
+  // Row 3 - Cool & Objects
+  { icon: '😎', code: 'b-)', label: 'Kính râm' },
   { icon: '🌹', code: '/-rose', label: 'Hoa hồng' },
   { icon: '💔', code: '/-break', label: 'Tan vỡ' },
   { icon: '☀️', code: '/-li', label: 'Mặt trời' },
   { icon: '🎂', code: '/-bd', label: 'Sinh nhật' },
   { icon: '💣', code: '/-bome', label: 'Bom' },
+  
+  // Row 4 - Gestures
   { icon: '👌', code: '/-ok', label: 'OK' },
   { icon: '✌️', code: '/-v', label: 'Hòa bình' },
   { icon: '🙏', code: '/-thanks', label: 'Cảm ơn' },
   { icon: '👊', code: '/-punch', label: 'Đấm' },
-  { icon: '🤝', code: '/-share', label: 'Chia sẻ' },
-  { icon: '🙇', code: '_()_', label: 'Cúi đầu' },
+  { icon: '🤝', code: '/-share', label: 'Bắt tay' },
+  { icon: '🙇', code: '_()_', label: 'Cầu nguyện' },
+  
+  // Row 5 - Misc
   { icon: '🚫', code: '/-no', label: 'Không' },
-  { icon: '👎', code: '/-bad', label: 'Tệ' },
-  { icon: '💌', code: '/-loveu', label: 'Yêu bạn' },
+  { icon: '💩', code: '/-shit', label: 'Tệ' },
+  { icon: '💌', code: '/-fade', label: 'Thư tình' },
   { icon: '🍺', code: '/-beer', label: 'Bia' },
 ]
 
@@ -95,9 +106,9 @@ export default function ReactionPicker({
 
         {/* Quick reactions (always visible) */}
         <div className="grid grid-cols-6 gap-2 mb-2">
-          {QUICK_REACTIONS.map((reaction) => (
+          {QUICK_REACTIONS.map((reaction, index) => (
             <button
-              key={reaction.code}
+              key={`quick-${reaction.code}-${index}`}
               onClick={() => {
                 onSelect(reaction.code)
                 onClose()
@@ -125,9 +136,9 @@ export default function ReactionPicker({
         {showAll && (
           <div className="border-t border-white/10 pt-2 mt-1">
             <div className="grid grid-cols-6 gap-2 max-h-64 overflow-y-auto custom-scrollbar">
-              {ALL_REACTIONS.map((reaction) => (
+              {ALL_REACTIONS.map((reaction, index) => (
                 <button
-                  key={reaction.code}
+                  key={`all-${reaction.code}-${index}`}
                   onClick={() => {
                     onSelect(reaction.code)
                     onClose()

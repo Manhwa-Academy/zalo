@@ -6,7 +6,7 @@ import {
   Phone, Video, Info, Users, Bell, BellOff, MessageSquare,
   Menu, LogOut, Check, CheckCheck, Clock, AlertCircle,
   Eye, EyeOff, Lock, Unlock, Star, Archive, Pin, Filter, Film,
-  Palette, Bot, DoorOpen, ChevronDown, QrCode, UserMinus, UserX
+  Palette, Bot, DoorOpen, ChevronDown, QrCode, UserMinus, UserX, ThumbsUp, Layers, Sparkles, Mic, CheckCircle, CreditCard, UserCircle, Monitor
 } from 'lucide-react'
 import AddFriendModal from './AddFriendModal'
 import JoinGroupModal from './JoinGroupModal'
@@ -20,6 +20,10 @@ import QRCodeModal from './QRCodeModal'
 import FriendManagementModal from './FriendManagementModal'
 import ProfileManagementModal from './ProfileManagementModal'
 import UserInfoModal from './UserInfoModal'
+import VoiceRecorder from './VoiceRecorder'
+import RecentStickersManager from './RecentStickersManager'
+import SendBankCardModal from './SendBankCardModal'
+import SendContactCardModal from './SendContactCardModal'
 
 interface Message {
   id: string | number
@@ -203,7 +207,8 @@ function renderMessageContent(
   onMediaClick?: (url: string) => void,
   mediaCache?: Record<string, string>,
   setMediaCache?: React.Dispatch<React.SetStateAction<Record<string, string>>>,
-  threadId?: string // NEW: Thread ID for call back button
+  threadId?: string, // NEW: Thread ID for call back button
+  onMentionClick?: (mentionName: string) => void // NEW: Callback when mention is clicked
 ) {
   if (!content) return null
 
@@ -353,6 +358,229 @@ function renderMessageContent(
       )
     }
 
+    // ⚠️ IMPORTANT: Check if this is a link type FIRST before checking image
+    // This prevents contact cards (url: "www.zaloapp.com") from being treated as images
+    if (parsedObj.type === 'link') {
+      const linkUrl = parsedObj.url || ''
+      const linkTitle = parsedObj.title || linkUrl
+      const linkDesc = parsedObj.description || ''
+      const linkThumb = parsedObj.thumbnail || ''
+      
+      // Check if this is a Bank QR code (title contains bank info)
+      const isBankQR = linkTitle.includes('QR thanh toan') || linkTitle.includes('Ngan hang') || linkTitle.includes('MBBank')
+      
+      if (isBankQR && linkUrl.match(/\.(jpg|jpeg|png)$/i)) {
+        // This is a bank QR code image
+        const lines = linkTitle.split(/[\r\n]+/).filter(Boolean)
+        const qrTitle = lines[0] || 'Mã QR thanh toán'
+        
+        return (
+          <div className="max-w-xs">
+            <div className="p-4 bg-gradient-to-br from-emerald-900/30 to-dark-300/70 border border-emerald-500/30 rounded-2xl shadow-xl space-y-3">
+              {/* Header */}
+              <div className="flex items-center gap-2 pb-2 border-b border-emerald-500/20">
+                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <p className="text-sm font-bold text-emerald-300">{qrTitle}</p>
+              </div>
+              
+              {/* QR Image */}
+              <div className="bg-white rounded-xl p-2 flex justify-center">
+                <img
+                  src={linkUrl}
+                  alt="Mã QR"
+                  className="w-full max-w-[200px] h-auto object-contain"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    target.style.display = 'none'
+                    const parent = target.parentElement
+                    if (parent) {
+                      parent.innerHTML = `
+                        <div class="text-center py-8">
+                          <div class="w-16 h-16 mx-auto mb-2 text-emerald-400">
+                            <svg fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
+                          </div>
+                          <p class="text-xs text-gray-400">Không tải được QR</p>
+                        </div>
+                      `
+                    }
+                  }}
+                />
+              </div>
+              
+              {/* Bank Info */}
+              {lines.length > 1 && (
+                <div className="space-y-1 text-xs">
+                  {lines.slice(1).map((line: string, idx: number) => (
+                    <p key={idx} className="text-gray-200 flex items-start gap-2">
+                      <span className="text-emerald-400">•</span>
+                      <span>{line}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+      
+      // Check if this is a contact card (has qrCodeUrl in description)
+      let isContactCard = false
+      let qrCodeUrl = ''
+      
+      try {
+        if (linkDesc && (linkDesc.includes('qrCodeUrl') || linkDesc.includes('gUid'))) {
+          const descData = JSON.parse(linkDesc)
+          if (descData.qrCodeUrl) {
+            isContactCard = true
+            qrCodeUrl = descData.qrCodeUrl
+          }
+        }
+      } catch (e) {
+        // Not a contact card, treat as normal link
+      }
+      
+      // Render contact card
+      if (isContactCard) {
+        return (
+          <div className="max-w-xs">
+            <div className="p-4 bg-gradient-to-br from-dark-300 to-dark-300/70 border border-cyan-500/30 rounded-2xl shadow-xl">
+              {/* Name */}
+              <div className="text-center mb-3">
+                <p className="text-sm font-bold text-white mb-1">{linkTitle}</p>
+                <p className="text-xs text-cyan-400 flex items-center justify-center gap-1">
+                  <UserCircle className="w-3 h-3" />
+                  Danh thiếp Zalo
+                </p>
+              </div>
+              
+              {/* Avatar */}
+              {linkThumb && (
+                <div className="flex justify-center mb-3">
+                  <div className="relative">
+                    <img
+                      src={linkThumb}
+                      alt={linkTitle}
+                      className="w-20 h-20 rounded-full object-cover border-2 border-cyan-400/50 shadow-lg"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        const parent = target.parentElement
+                        if (parent) {
+                          // Replace with icon placeholder
+                          parent.innerHTML = `
+                            <div class="w-20 h-20 rounded-full bg-cyan-500/20 border-2 border-cyan-400/50 flex items-center justify-center">
+                              <svg class="w-10 h-10 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                              </svg>
+                            </div>
+                          `
+                        }
+                      }}
+                    />
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-cyan-500 rounded-full border-2 border-dark-300 flex items-center justify-center">
+                      <UserCircle className="w-3.5 h-3.5 text-white" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* QR Code */}
+              {qrCodeUrl && (
+                <div className="bg-white p-2 rounded-xl mb-3 flex justify-center">
+                  <img
+                    src={qrCodeUrl}
+                    alt="QR Code"
+                    className="w-32 h-32 object-contain"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      const parent = target.parentElement
+                      if (parent) {
+                        // Replace with icon placeholder
+                        parent.innerHTML = `
+                          <div class="text-center py-4">
+                            <svg class="w-16 h-16 mx-auto text-gray-400" fill="currentColor" viewBox="0 0 24 24">
+                              <rect x="3" y="3" width="7" height="7"/>
+                              <rect x="14" y="3" width="7" height="7"/>
+                              <rect x="3" y="14" width="7" height="7"/>
+                              <rect x="14" y="14" width="3" height="3"/>
+                              <rect x="18" y="18" width="3" height="3"/>
+                            </svg>
+                            <p class="text-xs text-gray-400 mt-2">QR không khả dụng</p>
+                          </div>
+                        `
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    // Open in new tab
+                    if (linkUrl) {
+                      window.open(linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`, '_blank')
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 rounded-xl text-xs font-bold text-cyan-300 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <UserCircle className="w-3.5 h-3.5" />
+                  Xem trang cá nhân
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      }
+      
+      // Normal link preview
+      return (
+        <div className="max-w-xs">
+          <a 
+            href={linkUrl} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block p-3 bg-dark-300/90 border border-sky-500/30 rounded-2xl hover:border-sky-400/50 hover:bg-dark-300 transition-all shadow-md group"
+          >
+            {linkThumb && (
+              <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
+                <img
+                  src={linkThumb}
+                  alt={linkTitle}
+                  className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-200"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    const parent = target.parentElement
+                    if (parent) {
+                      parent.style.display = 'none'
+                    }
+                  }}
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <div className="flex items-start gap-2">
+                <Link2 className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-white truncate group-hover:text-sky-300 transition-colors">
+                    {linkTitle}
+                  </p>
+                  {linkDesc && !linkDesc.includes('qrCodeUrl') && (
+                    <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5">
+                      {linkDesc}
+                    </p>
+                  )}
+                  <p className="text-[9px] text-sky-400/70 truncate mt-1 font-mono">
+                    {linkUrl}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      )
+    }
+
     const isImageObject =
       parsedObj.type === 'image' ||
       parsedObj.photoUrl ||
@@ -417,6 +645,7 @@ function renderMessageContent(
     if (imgUrl && String(imgUrl).trim() !== '') {
       const cleanImgUrl = String(imgUrl).replace(/\\/g, '')
       const isGiphyUrl = cleanImgUrl.includes('giphy.com')
+      const captionText = parsedObj.caption || ''
       
       return (
         <div className="space-y-1.5 max-w-xs">
@@ -468,62 +697,9 @@ function renderMessageContent(
               }
             }}
           />
-          {titleText && <p className="text-xs text-gray-100 font-medium break-words">{titleText}</p>}
-        </div>
-      )
-    }
-
-    // LINK PREVIEW - Render link with preview card
-    if (parsedObj.type === 'link') {
-      const linkUrl = parsedObj.url || ''
-      const linkTitle = parsedObj.title || linkUrl
-      const linkDesc = parsedObj.description || ''
-      const linkThumb = parsedObj.thumbnail || ''
-      
-      return (
-        <div className="max-w-xs">
-          <a 
-            href={linkUrl} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="block p-3 bg-dark-300/90 border border-sky-500/30 rounded-2xl hover:border-sky-400/50 hover:bg-dark-300 transition-all shadow-md group"
-          >
-            {linkThumb && (
-              <div className="mb-2 rounded-lg overflow-hidden border border-white/10">
-                <img
-                  src={linkThumb}
-                  alt={linkTitle}
-                  className="w-full h-32 object-cover group-hover:scale-105 transition-transform duration-200"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    // Just hide the image if it fails to load, don't show error text
-                    const parent = target.parentElement
-                    if (parent) {
-                      parent.style.display = 'none'
-                    }
-                  }}
-                />
-              </div>
-            )}
-            <div className="space-y-1">
-              <div className="flex items-start gap-2">
-                <Link2 className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-white truncate group-hover:text-sky-300 transition-colors">
-                    {linkTitle}
-                  </p>
-                  {linkDesc && (
-                    <p className="text-[10px] text-gray-400 line-clamp-2 mt-0.5">
-                      {linkDesc}
-                    </p>
-                  )}
-                  <p className="text-[9px] text-sky-400/70 truncate mt-1 font-mono">
-                    {linkUrl}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </a>
+          {captionText && (
+            <p className="text-xs text-gray-200 whitespace-pre-wrap break-words">{captionText}</p>
+          )}
         </div>
       )
     }
@@ -574,6 +750,71 @@ function renderMessageContent(
     }
 
     if (isImageObject) {
+      // Special case: Bank QR code with caption
+      const caption = parsedObj.caption || ''
+      const isBankQR = caption.includes('QR thanh toan') || caption.includes('Ngan hang') || caption.includes('MBBank') || caption.includes('VietQR')
+      
+      if (isBankQR) {
+        // ⚠️ SKIP rendering if URL is empty - there should be another message with the actual QR image
+        // This prevents duplicate bank QR cards (one with placeholder, one with real image)
+        const hasUrl = imgUrl && String(imgUrl).trim() !== ''
+        if (!hasUrl) {
+          return null // Don't render - wait for the message with actual QR image URL
+        }
+        
+        // If we have a URL, render as image with bank info
+        const lines = caption.split(/[\r\n]+/).filter(Boolean)
+        const qrTitle = lines[0] || 'Mã QR thanh toán'
+        
+        return (
+          <div className="max-w-xs">
+            <div className="p-4 bg-gradient-to-br from-emerald-900/30 to-dark-300/70 border border-emerald-500/30 rounded-2xl shadow-xl space-y-3">
+              {/* Header */}
+              <div className="flex items-center gap-2 pb-2 border-b border-emerald-500/20">
+                <CreditCard className="w-5 h-5 text-emerald-400" />
+                <p className="text-sm font-bold text-emerald-300">{qrTitle}</p>
+              </div>
+              
+              {/* QR Image */}
+              <div className="bg-white rounded-xl p-2 flex justify-center">
+                <img
+                  src={String(imgUrl).replace(/\\/g, '')}
+                  alt="Mã QR"
+                  className="w-full max-w-[200px] h-auto object-contain"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    const parent = target.parentElement
+                    if (parent) {
+                      parent.innerHTML = `
+                        <div class="text-center py-8">
+                          <div class="w-16 h-16 mx-auto mb-2 text-emerald-400">
+                            <svg fill="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/></svg>
+                          </div>
+                          <p class="text-xs text-gray-400">Không tải được QR</p>
+                        </div>
+                      `
+                    }
+                  }}
+                />
+              </div>
+              
+              {/* Bank Info */}
+              {lines.length > 1 && (
+                <div className="space-y-1 text-xs">
+                  {lines.slice(1).map((line: string, idx: number) => (
+                    <p key={idx} className="text-gray-200 flex items-start gap-2">
+                      <span className="text-emerald-400">•</span>
+                      <span>{line}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      }
+      
+      // Normal image placeholder
       return (
         <div className="p-3 bg-dark-300/90 border border-white/15 rounded-2xl flex items-center gap-3 max-w-xs shadow-md">
           <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center flex-shrink-0">
@@ -747,7 +988,7 @@ function renderMessageContent(
         patternStr = `@(?:${titleCasePattern}|[^\\s@]+)`
       }
 
-      const regex = new RegExp(`(${patternStr})(?=\\s|$|[.,!?]|$)`, 'g')
+      const regex = new RegExp(`(${patternStr})(\\s?)`, 'g')
       let lastIdx = 0
       let match: RegExpExecArray | null
 
@@ -755,15 +996,27 @@ function renderMessageContent(
         if (match.index > lastIdx) {
           processedParts.push(part.substring(lastIdx, match.index))
         }
-        const mentionText = match[0]
+        const mentionText = match[1] // Mention text (without trailing space)
+        const trailingSpace = match[2] // Trailing space (if any)
+        const mentionName = mentionText.replace(/^@/, '') // Remove @ symbol
         processedParts.push(
           <span
             key={`mention-${partIdx}-${match.index}`}
-            className="inline-block text-sky-300 font-bold bg-sky-500/25 px-1.5 py-0.5 rounded-md border border-sky-400/40 cursor-pointer hover:underline mx-0.5 shadow-sm"
+            className="inline-block text-sky-300 font-bold bg-sky-500/25 px-1.5 py-0.5 rounded-md border border-sky-400/40 cursor-pointer hover:underline hover:bg-sky-500/40 transition-colors mx-0.5 shadow-sm"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onMentionClick) {
+                onMentionClick(mentionName)
+              }
+            }}
           >
             {mentionText}
           </span>
         )
+        // Preserve trailing space after mention
+        if (trailingSpace) {
+          processedParts.push(trailingSpace)
+        }
         lastIdx = regex.lastIndex
       }
 
@@ -787,9 +1040,9 @@ function renderMessageContent(
   }
 
   if (processedParts.length > 0) {
-    return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{processedParts.map((p, i) => renderWithNewlines(p, i))}</span>
+    return <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{processedParts.map((p, i) => renderWithNewlines(p, i))}</div>
   }
-  return <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{textContent}</span>
+  return <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{textContent}</div>
 }
 
 interface Conversation {
@@ -908,8 +1161,57 @@ export default function ZaloChatView({
     }
   }, [navigateToThreadId])
 
+  // 🆕 Fetch pinned conversations and muted threads from Zalo server on mount
+  useEffect(() => {
+    const fetchPinAndMuteStatus = async () => {
+      try {
+        // Fetch pinned conversations
+        const pinRes = await fetch('/api/zalo/get-pin-conversations')
+        const pinData = await pinRes.json()
+        
+        if (pinData.success && pinData.conversations) {
+          console.log('📌 Fetched pinned conversations:', pinData.conversations)
+          // Merge with localStorage
+          setPinnedThreadIds((prev) => {
+            const merged = new Set(prev)
+            pinData.conversations.forEach((id: string) => merged.add(id))
+            return merged
+          })
+        }
+
+        // Fetch muted threads
+        const muteRes = await fetch('/api/zalo/get-mute')
+        const muteData = await muteRes.json()
+        
+        if (muteData.success) {
+          console.log('🔕 Fetched muted threads:', muteData)
+          // Merge chatEntries and groupChatEntries
+          const mutedIds = new Set<string>()
+          muteData.chatEntries?.forEach((entry: any) => {
+            if (entry.id) mutedIds.add(entry.id)
+          })
+          muteData.groupChatEntries?.forEach((entry: any) => {
+            if (entry.id) mutedIds.add(entry.id)
+          })
+          
+          console.log('🔕 Merged muted IDs:', Array.from(mutedIds))
+          if (mutedIds.size > 0 && onMutedThreadIdsChange) {
+            onMutedThreadIdsChange(mutedIds)
+          }
+        }
+      } catch (error) {
+        console.error('❌ Failed to fetch pin/mute status:', error)
+      }
+    }
+
+    fetchPinAndMuteStatus()
+  }, []) // Run once on mount
+
   // Toggle mute/unmute notifications for a thread
-  const toggleMuteThread = (threadId: string) => {
+  const toggleMuteThread = async (threadId: string) => {
+    const wasMuted = mutedThreadIds.has(threadId)
+    
+    // Optimistic update UI
     const next = new Set(mutedThreadIds)
     if (next.has(threadId)) {
       next.delete(threadId)
@@ -917,6 +1219,37 @@ export default function ZaloChatView({
       next.add(threadId)
     }
     onMutedThreadIdsChange?.(next)
+    
+    // Sync with Zalo server
+    try {
+      const activeConv = conversations.find((c) => String(c.threadId) === String(threadId))
+      const threadType = activeConv?.type || 'User'
+      
+      const res = await fetch('/api/zalo/set-mute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          threadId,
+          threadType,
+          action: wasMuted ? 'UNMUTE' : 'MUTE',
+          duration: wasMuted ? undefined : 'FOREVER' // Mute forever by default
+        })
+      })
+      
+      const data = await res.json()
+      
+      if (!data.success) {
+        console.error('❌ Failed to sync mute status:', data.error)
+        // Revert optimistic update
+        onMutedThreadIdsChange?.(mutedThreadIds)
+      } else {
+        console.log('✅ Synced mute status with Zalo server')
+      }
+    } catch (error) {
+      console.error('❌ Error syncing mute status:', error)
+      // Revert optimistic update
+      onMutedThreadIdsChange?.(mutedThreadIds)
+    }
   }
 
   const [historyMessages, setHistoryMessages] = useState<Record<string, Message[]>>({})
@@ -1170,8 +1503,18 @@ export default function ZaloChatView({
 
   // Sticker & File Attachment States
   const [showStickerPicker, setShowStickerPicker] = useState(false)
-  const [stickerTab, setStickerTab] = useState<'giphy' | 'bilibili' | 'emojis'>('giphy')
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [stickerTab, setStickerTab] = useState<'recent' | 'zalo' | 'giphy' | 'bilibili' | 'emojis'>('recent')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  
+  // Media upload modals
+  const [showSendLinkModal, setShowSendLinkModal] = useState(false)
+  const [showVideoUploadModal, setShowVideoUploadModal] = useState(false)
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [showBankCardModal, setShowBankCardModal] = useState(false)
+  const [showContactCardModal, setShowContactCardModal] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [selectedVideo, setSelectedVideo] = useState<File | null>(null)
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1188,6 +1531,8 @@ export default function ZaloChatView({
   const [bilibiliPackages, setBilibiliPackages] = useState<any[]>([]) // Store packages separately
   const [bilibiliLoading, setBilibiliLoading] = useState(false)
   const [bilibiliSubTab, setBilibiliSubTab] = useState<string>('all') // 'all' or package id
+
+  // Zalo sticker search state - REMOVED (feature not working)
 
   // Fetch trending Giphy stickers on first open
   useEffect(() => {
@@ -1280,6 +1625,8 @@ export default function ZaloChatView({
     }, 400)
   }
 
+  // searchZaloStickers function - REMOVED (feature not working)
+
   // Close sticker picker when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1325,6 +1672,25 @@ export default function ZaloChatView({
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showMoreMenu])
+
+  // Close attach menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showAttachMenu) {
+        const target = event.target as HTMLElement
+        const isInsideMenu = target.closest('.attach-menu-container')
+        
+        if (!isInsideMenu) {
+          setShowAttachMenu(false)
+        }
+      }
+    }
+
+    if (showAttachMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showAttachMenu])
 
   const POPULAR_EMOJIS = ['😂', '🥰', '😍', '😭', '😎', '🤣', '👍', '❤️', '🔥', '🎉', '🙏', '✨', '💡', '🚀', '💯', '🤝', '😊', '🤔', '😅', '🥳', '💩', '🤡', '👻', '💀']
 
@@ -1739,6 +2105,11 @@ export default function ZaloChatView({
 
   const [showRightInfoDrawer, setShowRightInfoDrawer] = useState(false)
   const [showHeaderActionMenu, setShowHeaderActionMenu] = useState(false)
+  const conversationContextMenuRef = useRef<{ 
+    conv: Conversation; 
+    x: number; 
+    y: number 
+  } | null>(null)
   const [conversationContextMenu, setConversationContextMenu] = useState<{ 
     conv: Conversation; 
     x: number; 
@@ -1754,6 +2125,34 @@ export default function ZaloChatView({
       console.warn('Failed to save deleted messages to localStorage:', e)
     }
   }, [deletedLocallyMsgIds])
+
+  // Persist pinnedThreadIds to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('zalo_pinned_thread_ids', JSON.stringify(Array.from(pinnedThreadIds)))
+    } catch (e) {
+      console.warn('Failed to save pinned threads to localStorage:', e)
+    }
+  }, [pinnedThreadIds])
+
+  // Close conversation context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (conversationContextMenu) {
+        const target = event.target as HTMLElement
+        const isInsideMenu = target.closest('.conversation-context-menu')
+        
+        if (!isInsideMenu) {
+          setConversationContextMenu(null)
+        }
+      }
+    }
+
+    if (conversationContextMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [conversationContextMenu])
 
   // Search messages using PostgreSQL Full-Text Search
   useEffect(() => {
@@ -3280,6 +3679,31 @@ export default function ZaloChatView({
       return // Skip this deleted message
     }
     
+    // 🆕 Skip bank QR messages with empty URL (placeholder duplicates)
+    // These messages will be duplicate of the real bank QR message with actual image URL
+    try {
+      let parsedContent: any = msg.content
+      if (typeof msg.content === 'string' && msg.content.trim().startsWith('{')) {
+        parsedContent = JSON.parse(msg.content)
+      }
+      
+      if (parsedContent && typeof parsedContent === 'object') {
+        // Check if this is a bank QR image with empty URL
+        const isImageType = parsedContent.type === 'image'
+        const caption = parsedContent.caption || ''
+        const isBankQR = caption.includes('QR thanh toan') || caption.includes('Ngan hang') || caption.includes('MBBank') || caption.includes('VietQR')
+        const url = parsedContent.url || parsedContent.href || parsedContent.thumb || ''
+        const hasUrl = url && String(url).trim() !== ''
+        
+        if (isImageType && isBankQR && !hasUrl) {
+          console.log('⏭️ Skipping bank QR with empty URL:', msg.id)
+          return // Skip this duplicate placeholder message
+        }
+      }
+    } catch (e) {
+      // If parse fails, continue normally
+    }
+    
     // Skip undo event messages (JSON arrays with actionType)
     if (typeof msg.content === 'string') {
       const trimmed = msg.content.trim()
@@ -3674,12 +4098,12 @@ export default function ZaloChatView({
                         }
                       }
                     }}
-                    className={`p-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/5 ${
+                    className={`group p-3 flex items-center gap-3 cursor-pointer transition-all hover:bg-white/5 ${
                       isActive ? 'bg-primary/15 border-l-4 border-primary' : ''
                     } ${isPinned ? 'bg-amber-500/5' : ''}`}
                   >
                     <div className="relative">
-                      {conv.avatar ? (
+                      {conv.type !== 'Group' && conv.avatar ? (
                         <img 
                           src={conv.avatar} 
                           alt={conv.name} 
@@ -3697,7 +4121,7 @@ export default function ZaloChatView({
                         />
                       ) : (
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow">
-                          {conv.type === 'Group' ? '👨‍👩‍👧' : conv.name.charAt(0)}
+                          {conv.type === 'Group' ? <Users className="w-6 h-6" /> : conv.name.charAt(0)}
                         </div>
                       )}
 
@@ -3755,6 +4179,22 @@ export default function ZaloChatView({
                         </div>
                       )}
                     </div>
+
+                    {/* Quick Actions Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setConversationContextMenu({
+                          conv,
+                          x: e.clientX,
+                          y: e.clientY
+                        })
+                      }}
+                      className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                      title="Thêm"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
                   </div>
                 )
               })
@@ -3780,8 +4220,10 @@ export default function ZaloChatView({
                 </button>
 
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary font-bold flex-shrink-0">
-                  {activeConv.avatar ? (
+                  {activeConv.type !== 'Group' && activeConv.avatar ? (
                     <img src={activeConv.avatar} alt={activeConv.name} className="w-full h-full rounded-2xl object-cover" />
+                  ) : activeConv.type === 'Group' ? (
+                    <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                   ) : (
                     activeConv.name.charAt(0)
                   )}
@@ -4175,7 +4617,8 @@ export default function ZaloChatView({
             {pinnedMessage && (
               <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/30 flex items-center justify-between text-xs text-amber-300 animate-slideDown backdrop-blur-sm">
                 <div className="flex items-center gap-2 truncate">
-                  <span className="text-amber-400 font-bold">📌 Tin nhắn ghim:</span>
+                  <Pin className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span className="text-amber-400 font-bold">Tin nhắn ghim:</span>
                   <span className="text-gray-200 truncate">"{pinnedMessage.content}"</span>
                 </div>
                 <button
@@ -4328,15 +4771,16 @@ export default function ZaloChatView({
                           <div className="flex items-center gap-2 px-1 mb-1">
                             <span className="text-[11px] text-gray-300 font-semibold">{msg.fromName}</span>
                             <span className="text-[9px] text-gray-400 font-mono">
-                              {msg.timestamp && new Date(msg.timestamp).getTime() > 0
-                                ? new Date(msg.timestamp).toLocaleTimeString('vi-VN', {
+                              {(() => {
+                                const ts = parseTs(msg.timestamp)
+                                if (ts && ts > 0) {
+                                  return new Date(ts).toLocaleTimeString('vi-VN', {
                                     hour: '2-digit',
                                     minute: '2-digit',
                                   })
-                                : new Date().toLocaleTimeString('vi-VN', {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
+                                }
+                                return '--:--'
+                              })()}
                             </span>
                             {msg.replied && (
                               <span className="text-[9px] bg-primary/20 text-primary border border-primary/30 px-1.5 py-0.2 rounded font-bold flex items-center gap-0.5">
@@ -4517,7 +4961,81 @@ export default function ZaloChatView({
                                   )}
 
                                   {/* Actual Message Content */}
-                                  {renderMessageContent(msg.content, currentGroupMemberNames, (url) => setMediaPreviewModalUrl(url), mediaCache, setMediaCache, msg.threadId)}
+                                  {renderMessageContent(
+                                    msg.content, 
+                                    currentGroupMemberNames, 
+                                    (url) => setMediaPreviewModalUrl(url), 
+                                    mediaCache, 
+                                    setMediaCache, 
+                                    msg.threadId,
+                                    // Handle mention click
+                                    async (mentionName) => {
+                                      console.log('🔍 Mention clicked:', mentionName)
+                                      
+                                      // Try to find user ID from group members or friends list
+                                      let userId = ''
+                                      let userName = mentionName
+                                      let userAvatar = ''
+                                      
+                                      // Search in current group members (if group chat)
+                                      const activeConv = conversations.find(c => c.threadId === activeThreadId)
+                                      const threadMembers = activeThreadId ? (groupMembers[activeThreadId] || []) : []
+                                      
+                                      if (activeConv?.type === 'Group' && threadMembers.length > 0) {
+                                        const member = threadMembers.find((m: any) => 
+                                          m.name === mentionName || 
+                                          m.displayName === mentionName ||
+                                          m.zaloName === mentionName
+                                        )
+                                        if (member) {
+                                          userId = member.id
+                                          userName = member.name || mentionName
+                                          userAvatar = member.avatar || ''
+                                        }
+                                      }
+                                      
+                                      // If not found in group, search in friends list
+                                      if (!userId && friendsList.length > 0) {
+                                        const friend = friendsList.find(f => 
+                                          f.name === mentionName
+                                        )
+                                        if (friend) {
+                                          userId = friend.id
+                                          userName = friend.name || mentionName
+                                          userAvatar = friend.avatar || ''
+                                        }
+                                      }
+                                      
+                                      // If still not found, try to search by name via API
+                                      if (!userId) {
+                                        try {
+                                          const res = await fetch('/api/zalo/friends')
+                                          if (res.ok) {
+                                            const data = await res.json()
+                                            const allFriends = data.friends || []
+                                            const friend = allFriends.find((f: any) => 
+                                              f.name === mentionName || 
+                                              f.displayName === mentionName ||
+                                              f.zaloName === mentionName
+                                            )
+                                            if (friend) {
+                                              userId = friend.id
+                                              userName = friend.name || friend.displayName || mentionName
+                                              userAvatar = friend.avatar || ''
+                                            }
+                                          }
+                                        } catch (err) {
+                                          console.error('Failed to fetch friends for mention:', err)
+                                        }
+                                      }
+                                      
+                                      // Open user info modal
+                                      setSelectedUserId(userId)
+                                      setSelectedUserName(userName)
+                                      setSelectedUserAvatar(userAvatar)
+                                      setShowUserInfoModal(true)
+                                    }
+                                  )}
                                   
                                   {/* Reactions Display */}
                                   {msg.reactions && msg.reactions.length > 0 && (
@@ -4594,7 +5112,7 @@ export default function ZaloChatView({
                                 className="p-1 hover:bg-white/15 text-gray-300 hover:text-yellow-400 rounded-full transition-all relative group/btn"
                                 title="Biểu cảm"
                               >
-                                <span className="text-sm">👍</span>
+                                <ThumbsUp className="w-4 h-4" />
                                 <span className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 hidden group-hover/btn:block bg-black/90 text-white text-[10px] px-2 py-0.5 rounded shadow whitespace-nowrap z-30 pointer-events-none">
                                   Biểu cảm
                                 </span>
@@ -4858,11 +5376,21 @@ export default function ZaloChatView({
                     className="absolute bottom-full mb-2 right-3 w-80 sm:w-96 bg-dark-100 border border-white/20 rounded-2xl shadow-2xl overflow-hidden z-[999] backdrop-blur-xl animate-fadeIn flex flex-col"
                   >
                     {/* Header Tabs */}
-                    <div className="flex border-b border-white/10 bg-dark-300/80 p-1">
+                    <div className="flex border-b border-white/10 bg-dark-300/80 p-1 overflow-x-auto">
+                      <button
+                        type="button"
+                        onClick={() => setStickerTab('recent')}
+                        className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
+                          stickerTab === 'recent' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <Clock className="w-3 h-3" />
+                        <span>Gần đây</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => setStickerTab('giphy')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 ${
+                        className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
                           stickerTab === 'giphy' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
@@ -4872,26 +5400,41 @@ export default function ZaloChatView({
                       <button
                         type="button"
                         onClick={() => setStickerTab('bilibili')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                        className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
                           stickerTab === 'bilibili' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        📺 Bilibili
+                        <Monitor className="w-3 h-3" />
+                        <span>Bilibili</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setStickerTab('emojis')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-xl transition-all ${
+                        className={`flex-1 py-1.5 px-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1 whitespace-nowrap ${
                           stickerTab === 'emojis' ? 'bg-primary text-white shadow' : 'text-gray-400 hover:text-white'
                         }`}
                       >
-                        😃 Emojis
+                        <Smile className="w-3 h-3" />
+                        <span>Emoji</span>
                       </button>
                     </div>
 
                     {/* Content Panel */}
                     <div className="flex flex-col max-h-80">
-                      {stickerTab === 'giphy' ? (
+                      {stickerTab === 'recent' ? (
+                        <div className="p-3 overflow-y-auto flex-1 custom-scrollbar" style={{ maxHeight: '260px' }}>
+                          <RecentStickersManager
+                            onSelectSticker={(sticker) => {
+                              handleSendSticker({
+                                id: sticker.id,
+                                cateId: parseInt(sticker.catId) || 1,
+                                url: sticker.url
+                              })
+                            }}
+                            maxRecent={30}
+                          />
+                        </div>
+                      ) : stickerTab === 'giphy' ? (
                         <>
                           {/* Giphy Search Bar */}
                           <div className="p-2 border-b border-white/10">
@@ -4947,13 +5490,14 @@ export default function ZaloChatView({
                               <button
                                 type="button"
                                 onClick={() => setBilibiliSubTab('all')}
-                                className={`px-3 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors ${
+                                className={`px-3 py-1 rounded-lg text-[10px] font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
                                   bilibiliSubTab === 'all'
                                     ? 'bg-pink-500 text-white'
                                     : 'bg-dark-300 text-gray-400 hover:text-white'
                                 }`}
                               >
-                                🌟 Tất cả
+                                <Sparkles className="w-3 h-3" />
+                                <span>Tất cả</span>
                               </button>
                               {bilibiliPackages.map((pkg) => (
                                 <button
@@ -5086,31 +5630,121 @@ export default function ZaloChatView({
                     className="hidden"
                   />
 
-                  {/* 1. Image Upload Button */}
-                  <button
-                    type="button"
-                    onClick={() => imageInputRef.current?.click()}
-                    title="Gửi hình ảnh"
-                    className="p-2 text-gray-300 hover:text-sky-400 hover:bg-white/10 rounded-xl transition-all"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </button>
+                  {/* Attachment Menu Dropdown */}
+                  <div className="relative attach-menu-container">
+                    <button
+                      type="button"
+                      onClick={() => setShowAttachMenu((prev) => !prev)}
+                      title="Đính kèm"
+                      className={`p-2 rounded-xl transition-all ${
+                        showAttachMenu ? 'text-primary bg-primary/20' : 'text-gray-300 hover:text-primary hover:bg-white/10'
+                      }`}
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
 
-                  {/* 2. File Upload Button */}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    title="Gửi tập tin/tài liệu"
-                    className="p-2 text-gray-300 hover:text-emerald-400 hover:bg-white/10 rounded-xl transition-all"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
-                  </button>
+                    {/* Dropdown Menu */}
+                    {showAttachMenu && (
+                      <div className="absolute bottom-full left-0 mb-2 w-48 bg-dark-200/98 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden z-50 animate-slideIn">
+                        {/* Image */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            imageInputRef.current?.click()
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-sky-400"
+                        >
+                          <ImageIcon className="w-4 h-4" />
+                          <span>Hình ảnh</span>
+                        </button>
 
-                  {/* 3. Sticker & Emoji Picker Toggle Button */}
+                        {/* Video */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowVideoUploadModal(true)
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-purple-400"
+                        >
+                          <Film className="w-4 h-4" />
+                          <span>Video</span>
+                        </button>
+
+                        {/* File */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            fileInputRef.current?.click()
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-emerald-400"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                          <span>Tập tin</span>
+                        </button>
+
+                        <div className="h-px bg-white/10 my-1"></div>
+
+                        {/* Voice */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowVoiceRecorder(true)
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-red-400"
+                        >
+                          <Mic className="w-4 h-4" />
+                          <span>Tin nhắn thoại</span>
+                        </button>
+
+                        {/* Link */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSendLinkModal(true)
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-blue-400"
+                        >
+                          <Link2 className="w-4 h-4" />
+                          <span>Liên kết</span>
+                        </button>
+
+                        <div className="h-px bg-white/10 my-1"></div>
+
+                        {/* Bank Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowBankCardModal(true)
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-emerald-400"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          <span>Thẻ ngân hàng</span>
+                        </button>
+
+                        {/* Contact Card */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowContactCardModal(true)
+                            setShowAttachMenu(false)
+                          }}
+                          className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-cyan-400"
+                        >
+                          <UserCircle className="w-4 h-4" />
+                          <span>Danh thiếp</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sticker & Emoji Picker Toggle Button */}
                   <button
                     type="button"
                     data-sticker-toggle
@@ -5120,9 +5754,7 @@ export default function ZaloChatView({
                       showStickerPicker ? 'text-amber-400 bg-amber-500/20' : 'text-gray-300 hover:text-amber-400 hover:bg-white/10'
                     }`}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    <Smile className="w-5 h-5" />
                   </button>
 
                   {/* Text Input Field - Textarea for multi-line + Ctrl+V image paste */}
@@ -5200,9 +5832,7 @@ export default function ZaloChatView({
                     ) : (
                       <>
                         <span>Gửi</span>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
+                        <Send className="w-4 h-4" />
                       </>
                     )}
                   </button>
@@ -5237,16 +5867,16 @@ export default function ZaloChatView({
           {/* Profile Overview */}
           <div className="p-5 border-b border-white/10 flex flex-col items-center text-center space-y-3 bg-dark-300/40 flex-shrink-0">
             <div className="w-16 h-16 rounded-3xl bg-primary/20 p-0.5 shadow-lg relative">
-              {activeConv.avatar ? (
+              {activeConv.type !== 'Group' && activeConv.avatar ? (
                 <img src={activeConv.avatar} alt={activeConv.name} className="w-full h-full rounded-3xl object-cover" />
               ) : (
                 <div className="w-full h-full rounded-3xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white font-bold text-xl">
-                  {activeConv.type === 'Group' ? '👨‍👩‍👧' : activeConv.name.charAt(0)}
+                  {activeConv.type === 'Group' ? <Users className="w-8 h-8" /> : activeConv.name.charAt(0)}
                 </div>
               )}
               {pinnedThreadIds.has(String(activeConv.threadId)) && (
-                <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full shadow">
-                  📌
+                <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-full shadow flex items-center justify-center">
+                  <Pin className="w-2.5 h-2.5" />
                 </span>
               )}
             </div>
@@ -5678,8 +6308,12 @@ export default function ZaloChatView({
                   return (
                     <div key={conv.threadId} className="pt-2 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 overflow-hidden">
-                        {conv.avatar ? (
+                        {conv.type !== 'Group' && conv.avatar ? (
                           <img src={conv.avatar} alt={conv.name} className="w-8 h-8 rounded-full object-cover" />
+                        ) : conv.type === 'Group' ? (
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white">
+                            <Users className="w-4 h-4" />
+                          </div>
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-sky-600 flex items-center justify-center text-white font-bold text-xs">
                             {conv.name.charAt(0)}
@@ -5807,7 +6441,7 @@ export default function ZaloChatView({
             }}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">👍</span>
+            <ThumbsUp className="w-4 h-4" />
             <span className="font-medium">Thả biểu cảm</span>
           </button>
 
@@ -5827,7 +6461,7 @@ export default function ZaloChatView({
             onClick={() => handleToggleStar(contextMenu.msg.id)}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">⭐</span>
+            <Star className={`w-4 h-4 ${starredMsgIds.has(contextMenu.msg.id) ? 'fill-yellow-400 text-yellow-400' : ''}`} />
             <span className="font-medium">
               {starredMsgIds.has(contextMenu.msg.id) ? 'Bỏ đánh dấu tin nhắn' : 'Đánh dấu tin nhắn'}
             </span>
@@ -5839,7 +6473,7 @@ export default function ZaloChatView({
             onClick={() => handleStartMultiSelect(contextMenu.msg.id)}
             className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-3 transition-colors"
           >
-            <span className="text-base">📑</span>
+            <Layers className="w-4 h-4" />
             <span className="font-medium">Chọn nhiều tin nhắn</span>
           </button>
 
@@ -6071,7 +6705,10 @@ export default function ZaloChatView({
                   chatBg.includes('311042') ? 'border-purple-500 ring-2 ring-purple-500/50' : 'border-white/10 hover:border-white/30'
                 }`}
               >
-                <span className="text-xs font-bold text-white">🌌 Cosmic Gradient</span>
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Cosmic Gradient
+                </span>
               </button>
 
               {/* Option 4: Mặc định Dark */}
@@ -6082,13 +6719,19 @@ export default function ZaloChatView({
                   chatBg === 'default' || !chatBg ? 'border-purple-500 ring-2 ring-purple-500/50' : 'border-white/10 hover:border-white/30'
                 }`}
               >
-                <span className="text-xs font-bold text-white">🖤 Mặc định (Đen tối)</span>
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <Palette className="w-3.5 h-3.5" />
+                  Mặc định (Đen tối)
+                </span>
               </button>
             </div>
 
             {/* Upload Custom Wallpaper */}
             <div className="pt-2 border-t border-white/10 space-y-2">
-              <label className="block text-xs font-bold text-gray-300">📁 Hoặc chọn ảnh bất kỳ từ máy tính:</label>
+              <label className="block text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5" />
+                Hoặc chọn ảnh bất kỳ từ máy tính:
+              </label>
               <input
                 type="file"
                 accept="image/*"
@@ -6181,6 +6824,435 @@ export default function ZaloChatView({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Send Link Modal */}
+      {showSendLinkModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-4 animate-fadeIn" onClick={() => setShowSendLinkModal(false)}>
+          <div className="bg-dark-100 border border-white/20 rounded-2xl shadow-2xl w-full max-w-md animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-white/10">
+              <h3 className="text-lg font-bold text-white">Gửi liên kết</h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">Nhập link:</label>
+              <input
+                type="url"
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://example.com"
+                className="w-full bg-dark-300 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-primary"
+                autoFocus
+              />
+            </div>
+            <div className="px-6 py-4 bg-dark-200/50 border-t border-white/10 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowSendLinkModal(false)
+                  setLinkUrl('')
+                }}
+                className="px-5 py-2.5 rounded-xl bg-dark-300 hover:bg-dark-200 text-white text-sm font-medium transition-all"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={async () => {
+                  if (!linkUrl.trim()) return
+                  
+                  try {
+                    const response = await fetch('/api/zalo/send-link', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        url: linkUrl,
+                        threadId: activeThreadId,
+                        threadType: activeConv?.type === 'Group' ? 1 : 0
+                      })
+                    })
+                    
+                    const data = await response.json()
+                    if (data.success) {
+                      setSyncNotice('✅ Đã gửi liên kết!')
+                      setShowSendLinkModal(false)
+                      setLinkUrl('')
+                    } else {
+                      alert(data.error || 'Lỗi gửi liên kết')
+                    }
+                  } catch (error) {
+                    console.error('Failed to send link:', error)
+                    alert('Không thể gửi liên kết')
+                  }
+                }}
+                disabled={!linkUrl.trim()}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:brightness-110 text-white text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Video Upload Modal */}
+      {showVideoUploadModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[10000] p-4 animate-fadeIn" onClick={() => setShowVideoUploadModal(false)}>
+          <div className="bg-dark-100 border border-white/20 rounded-2xl shadow-2xl w-full max-w-md animate-scaleIn" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-white/10">
+              <h3 className="text-lg font-bold text-white">Gửi video</h3>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-sm text-gray-400 mb-4">Tính năng gửi video đang được phát triển</p>
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    setSelectedVideo(file)
+                  }
+                }}
+                className="hidden"
+                id="video-upload"
+              />
+              <label
+                htmlFor="video-upload"
+                className="inline-block px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all cursor-pointer"
+              >
+                <Film className="w-4 h-4 inline-block mr-2" />
+                Chọn video
+              </label>
+              {selectedVideo && (
+                <p className="mt-3 text-sm text-white">
+                  <CheckCircle className="w-4 h-4 inline-block mr-1 text-success" />
+                  {selectedVideo.name}
+                </p>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-dark-200/50 border-t border-white/10 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowVideoUploadModal(false)
+                  setSelectedVideo(null)
+                }}
+                className="px-5 py-2.5 rounded-xl bg-dark-300 hover:bg-dark-200 text-white text-sm font-medium transition-all"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={() => {
+                  // TODO: Implement video upload API call
+                  alert('Tính năng gửi video đang được phát triển')
+                }}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-primary to-secondary hover:brightness-110 text-white text-sm font-medium transition-all flex items-center gap-2"
+              >
+                <Send className="w-4 h-4" />
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Voice Recorder Modal */}
+      {showVoiceRecorder && (
+        <VoiceRecorder
+          onSend={async (audioBlob) => {
+            try {
+              const formData = new FormData()
+              formData.append('audio', audioBlob, 'voice.webm')
+              formData.append('threadId', activeThreadId || '')
+              formData.append('threadType', (activeConv?.type === 'Group' ? 1 : 0).toString())
+
+              const response = await fetch('/api/zalo/send-voice', {
+                method: 'POST',
+                body: formData
+              })
+
+              const data = await response.json()
+              
+              if (data.success) {
+                setSyncNotice('✅ Đã gửi tin nhắn thoại!')
+                setShowVoiceRecorder(false)
+                
+                // Refresh messages
+                await handleManualSync()
+              } else {
+                alert(data.error || 'Lỗi gửi tin nhắn thoại')
+              }
+            } catch (error) {
+              console.error('Failed to send voice:', error)
+              alert('Không thể gửi tin nhắn thoại')
+            }
+          }}
+          onCancel={() => setShowVoiceRecorder(false)}
+        />
+      )}
+
+      {/* Conversation Quick Actions Context Menu */}
+      {conversationContextMenu && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setConversationContextMenu(null)}
+          />
+          
+          {/* Menu */}
+          <div
+            className="conversation-context-menu fixed z-[9999] bg-dark-200/98 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden min-w-[200px] animate-in fade-in zoom-in-95 duration-150"
+            style={{
+              left: `${conversationContextMenu.x}px`,
+              top: `${conversationContextMenu.y}px`,
+              transform: 'translate(-100%, 0)'
+            }}
+          >
+            {/* Pin/Unpin */}
+            <button
+              onClick={() => {
+                const threadId = String(conversationContextMenu.conv.threadId)
+                const isPinned = pinnedThreadIds.has(threadId)
+                
+                if (isPinned) {
+                  setPinnedThreadIds(prev => {
+                    const next = new Set(prev)
+                    next.delete(threadId)
+                    return next
+                  })
+                } else {
+                  setPinnedThreadIds(prev => new Set(prev).add(threadId))
+                }
+                
+                setConversationContextMenu(null)
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-amber-400"
+            >
+              <Pin className="w-4 h-4" />
+              <span>
+                {pinnedThreadIds.has(String(conversationContextMenu.conv.threadId))
+                  ? 'Bỏ ghim'
+                  : 'Ghim cuộc trò chuyện'}
+              </span>
+            </button>
+
+            {/* Mute/Unmute */}
+            <button
+              onClick={() => {
+                const threadId = String(conversationContextMenu.conv.threadId)
+                const isMuted = mutedThreadIds.has(threadId)
+                
+                if (onMutedThreadIdsChange) {
+                  const newSet = new Set(mutedThreadIds)
+                  if (isMuted) {
+                    newSet.delete(threadId)
+                  } else {
+                    newSet.add(threadId)
+                  }
+                  onMutedThreadIdsChange(newSet)
+                }
+                
+                setConversationContextMenu(null)
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-gray-400"
+            >
+              {mutedThreadIds.has(String(conversationContextMenu.conv.threadId)) ? (
+                <>
+                  <Bell className="w-4 h-4" />
+                  <span>Bật thông báo</span>
+                </>
+              ) : (
+                <>
+                  <BellOff className="w-4 h-4" />
+                  <span>Tắt thông báo</span>
+                </>
+              )}
+            </button>
+
+            {/* Mark as Read */}
+            <button
+              onClick={async () => {
+                const conv = conversationContextMenu.conv
+                setConversationContextMenu(null)
+                
+                try {
+                  // Get recent messages from this conversation to mark as read
+                  const threadHistory = historyMessages[conv.threadId] || []
+                  const recentMessages = threadHistory.slice(-20) // Last 20 messages
+                  
+                  if (recentMessages.length === 0) {
+                    console.log('No messages to mark as read')
+                    return
+                  }
+                  
+                  // Format messages for seen event API
+                  const messagesToMarkRead = recentMessages
+                    .filter(m => !m.isSelf) // Only mark others' messages as read
+                    .map(m => ({
+                      msgId: String(m.msgId || m.id),
+                      cliMsgId: String(m.cliMsgId || ''),
+                      globalMsgId: String(m.globalMsgId || '')
+                    }))
+                  
+                  if (messagesToMarkRead.length === 0) {
+                    console.log('No messages from others to mark as read')
+                    return
+                  }
+                  
+                  setSyncNotice('Đang đánh dấu đã đọc...')
+                  
+                  const res = await fetch('/api/zalo/typing-seen', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      action: 'send_seen',
+                      threadId: conv.threadId,
+                      threadType: conv.type,
+                      messages: messagesToMarkRead
+                    })
+                  })
+                  
+                  const data = await res.json()
+                  if (data.success) {
+                    setSyncNotice('✅ Đã đánh dấu đã đọc!')
+                  } else {
+                    setSyncNotice('❌ ' + (data.error || 'Không thể đánh dấu đã đọc'))
+                  }
+                } catch (error) {
+                  console.error('Failed to mark as read:', error)
+                  setSyncNotice('❌ Không thể đánh dấu đã đọc')
+                }
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-sky-400"
+            >
+              <CheckCheck className="w-4 h-4" />
+              <span>Đánh dấu đã đọc</span>
+            </button>
+
+            <div className="h-px bg-white/10 my-1"></div>
+
+            {/* Archive */}
+            <button
+              onClick={() => {
+                // TODO: Implement archive
+                console.log('Archive:', conversationContextMenu.conv.threadId)
+                setConversationContextMenu(null)
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-gray-300 hover:text-blue-400"
+            >
+              <Archive className="w-4 h-4" />
+              <span>Lưu trữ</span>
+            </button>
+
+            <div className="h-px bg-white/10 my-1"></div>
+
+            {/* Delete Chat */}
+            <button
+              onClick={async () => {
+                const conv = conversationContextMenu.conv
+                if (confirm(`Bạn có chắc muốn xóa cuộc trò chuyện với "${conv.name}"?\n\nLưu ý: Tin nhắn chỉ bị xóa ở thiết bị này, không xóa trên Zalo server.`)) {
+                  try {
+                    const res = await fetch('/api/zalo/delete-chat', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        threadId: conv.threadId,
+                        threadType: conv.type === 'Group' ? 1 : 0
+                      })
+                    })
+                    
+                    const data = await res.json()
+                    if (data.success) {
+                      // Remove from conversations list
+                      setConversations(prev => prev.filter(c => c.threadId !== conv.threadId))
+                      
+                      // Clear active thread if it's the deleted one
+                      if (activeThreadId === conv.threadId) {
+                        setActiveThreadId(null)
+                      }
+                      
+                      setSyncNotice('✅ Đã xóa cuộc trò chuyện')
+                    } else {
+                      alert(data.error || 'Không thể xóa cuộc trò chuyện')
+                    }
+                  } catch (error) {
+                    console.error('Failed to delete chat:', error)
+                    alert('Không thể xóa cuộc trò chuyện')
+                  }
+                }
+                setConversationContextMenu(null)
+              }}
+              className="w-full px-4 py-2.5 text-left text-sm hover:bg-white/10 transition-colors flex items-center gap-3 text-red-400 hover:text-red-300"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Xóa cuộc trò chuyện</span>
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Bank Card Modal */}
+      {showBankCardModal && activeConv && (
+        <SendBankCardModal
+          isOpen={showBankCardModal}
+          onClose={() => setShowBankCardModal(false)}
+          threadId={activeConv.threadId}
+          threadType={activeConv.type}
+          threadName={activeConv.name}
+          onMessageSent={async () => {
+            // Reload messages from history API
+            try {
+              const type = activeConv.type === 'Group' ? 'Group' : 'User'
+              const res = await fetch(`/api/zalo/history?threadId=${activeConv.threadId}&type=${type}`)
+              const data = await res.json()
+              
+              if (data.success && data.messages && Array.isArray(data.messages)) {
+                // Update conversation with new messages
+                setConversations(prev => 
+                  prev.map(conv => 
+                    conv.threadId === activeConv.threadId 
+                      ? { ...conv, messages: data.messages }
+                      : conv
+                  )
+                )
+              }
+            } catch (error) {
+              console.error('Failed to reload messages:', error)
+            }
+          }}
+        />
+      )}
+
+      {/* Contact Card Modal */}
+      {showContactCardModal && activeConv && userInfo && (
+        <SendContactCardModal
+          isOpen={showContactCardModal}
+          onClose={() => setShowContactCardModal(false)}
+          threadId={activeConv.threadId}
+          threadType={activeConv.type}
+          threadName={activeConv.name}
+          currentUserId={userInfo.userId || userInfo.id || ''}
+          currentUserName={userInfo.displayName || userInfo.name || 'User'}
+          onMessageSent={async () => {
+            // Reload messages from history API
+            try {
+              const type = activeConv.type === 'Group' ? 'Group' : 'User'
+              const res = await fetch(`/api/zalo/history?threadId=${activeConv.threadId}&type=${type}`)
+              const data = await res.json()
+              
+              if (data.success && data.messages && Array.isArray(data.messages)) {
+                // Update conversation with new messages
+                setConversations(prev => 
+                  prev.map(conv => 
+                    conv.threadId === activeConv.threadId 
+                      ? { ...conv, messages: data.messages }
+                      : conv
+                  )
+                )
+              }
+            } catch (error) {
+              console.error('Failed to reload messages:', error)
+            }
+          }}
+        />
       )}
     </div>
   )

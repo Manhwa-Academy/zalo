@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import ConfirmModal from './ConfirmModal'
+import { Bot, X, User, Tag, Target, Brain, BookOpen, Save, AtSign, Reply, Search, Sparkles } from 'lucide-react'
 
 interface AIPersonalSettingsProps {
   onClose?: () => void
@@ -104,14 +105,15 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
       <div className="bg-dark-200 rounded-2xl p-6 max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            🤖 Cài đặt AI Cá nhân
+            <Bot className="w-6 h-6 text-primary" />
+            Cài đặt AI Cá nhân
           </h2>
           {onClose && (
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors"
+              className="text-gray-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
           )}
         </div>
@@ -119,8 +121,9 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
         <div className="space-y-6">
           {/* Display Name */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">
-              📛 Tên của bạn
+            <label className="block text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <User className="w-4 h-4 text-primary" />
+              Tên của bạn
             </label>
             <input
               type="text"
@@ -136,8 +139,9 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
 
           {/* Nicknames */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">
-              🏷️ Biệt danh / Tên khác
+            <label className="block text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary" />
+              Biệt danh / Tên khác
             </label>
             <div className="flex gap-2 mb-2">
               <input
@@ -178,8 +182,9 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
 
           {/* AI Reply Mode */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-3">
-              🎯 Chế độ AI tự động
+            <label className="block text-sm font-semibold text-white mb-3 flex items-center gap-2">
+              <Target className="w-4 h-4 text-primary" />
+              Chế độ AI tự động
             </label>
             <div className="space-y-2">
               <label className="flex items-start gap-3 p-3 bg-dark-300 border border-white/20 rounded-lg cursor-pointer hover:border-primary/50 transition-colors">
@@ -192,7 +197,10 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-semibold text-white">📍 Chỉ khi @mention hoặc reply</div>
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <AtSign className="w-4 h-4 text-purple-400" />
+                    Chỉ khi @mention hoặc reply
+                  </div>
                   <div className="text-xs text-gray-400 mt-1">
                     AI chỉ trả lời khi có người @mention tên bạn hoặc reply tin nhắn của bạn
                   </div>
@@ -209,7 +217,10 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-semibold text-white">🔍 Khi thấy tên trong tin nhắn</div>
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <Search className="w-4 h-4 text-amber-400" />
+                    Khi thấy tên trong tin nhắn
+                  </div>
                   <div className="text-xs text-gray-400 mt-1">
                     AI trả lời khi thấy tên hoặc biệt danh của bạn trong tin nhắn (không cần @)
                   </div>
@@ -226,7 +237,10 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <div className="font-semibold text-white">🧠 Thông minh (tự động)</div>
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    Thông minh (tự động)
+                  </div>
                   <div className="text-xs text-gray-400 mt-1">
                     AI luôn đọc nhóm, tự động trả lời khi thấy câu hỏi hoặc cần thiết
                   </div>
@@ -237,8 +251,9 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
 
           {/* Context Length */}
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">
-              📚 Số tin nhắn đọc trước (Context)
+            <label className="block text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-primary" />
+              Số tin nhắn đọc trước (Context)
             </label>
             <div className="flex items-center gap-4">
               <input
@@ -267,7 +282,10 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
                 className="mt-1"
               />
               <div className="flex-1">
-                <div className="font-semibold text-white">🧠 Nhớ thông tin trong hội thoại</div>
+                <div className="font-semibold text-white flex items-center gap-2">
+                  <Brain className="w-4 h-4 text-primary" />
+                  Nhớ thông tin trong hội thoại
+                </div>
                 <div className="text-xs text-gray-400 mt-1">
                   AI sẽ nhớ thông tin đã nói trong cuộc trò chuyện (VD: "Hôm qua Phong nói sẽ đi chơi")
                 </div>
@@ -282,7 +300,8 @@ export default function AIPersonalSettings({ onClose }: AIPersonalSettingsProps)
               disabled={saving}
               className="flex-1 px-6 py-3 bg-primary hover:bg-primary/80 disabled:bg-gray-600 text-white rounded-lg transition-colors font-bold"
             >
-              {saving ? 'Đang lưu...' : '💾 Lưu cài đặt'}
+              <Save className="w-4 h-4 inline mr-2" />
+              {saving ? 'Đang lưu...' : 'Lưu cài đặt'}
             </button>
             {onClose && (
               <button

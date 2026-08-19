@@ -743,21 +743,35 @@ export function attachListenerToApi(zaloApi: any) {
 
     let targetThreadId = ''
     if (isGroupMsg) {
+      // GROUP: Always use grid or threadId
       targetThreadId = String(message.data?.grid || message.threadId || '')
+      console.log('🏢 [Listener] Group message - threadId:', targetThreadId)
     } else {
+      // 1-1 CHAT: Determine other party
       if (message.isSelf) {
-        targetThreadId = String(message.data?.idTo || message.data?.to || message.idTo || message.to || senderId || '')
-        if (ownId && (targetThreadId === ownId || targetThreadId === '0' || targetThreadId === 'undefined')) {
-          targetThreadId = String(message.data?.idTo || message.idTo || senderId || '')
+        // Self-sent message: use idTo (recipient)
+        targetThreadId = String(message.data?.idTo || message.data?.to || message.idTo || message.to || '')
+        
+        // Validate: Don't use ownId as targetThreadId
+        if (ownId && (targetThreadId === ownId || targetThreadId === '0' || targetThreadId === 'undefined' || !targetThreadId)) {
+          targetThreadId = String(message.data?.idTo || message.idTo || '')
         }
+        
+        console.log('💬 [Listener] Self-sent 1-1 message - recipient:', targetThreadId)
       } else {
-        targetThreadId = String(message.data?.uidFrom || message.from || message.uidFrom || senderId || '')
+        // Received message: use uidFrom (sender)
+        targetThreadId = String(message.data?.uidFrom || message.from || message.uidFrom || '')
+        console.log('💬 [Listener] Received 1-1 message - sender:', targetThreadId)
       }
     }
 
+    // Final validation: Reject invalid threadIds
     if (!targetThreadId || targetThreadId === '0' || targetThreadId === 'undefined') {
+      console.warn('⚠️ [Listener] Invalid threadId detected, using senderId as fallback:', senderId)
       targetThreadId = senderId
     }
+    
+    console.log('✅ [Listener] Final threadId:', targetThreadId, '| Type:', isGroupMsg ? 'Group' : '1-1')
 
     const realMsgId = message.data?.msgId || message.msgId || message.data?.cliMsgId || message.cliMsgId || Date.now()
     const realCliMsgId = message.data?.cliMsgId || message.cliMsgId || message.data?.msgId || message.msgId || Date.now()
@@ -1050,19 +1064,23 @@ export function attachListenerToApi(zaloApi: any) {
         // 🆕 If this is a reaction only, force use preset message (skip AI)
         let replyText
         if (isReactionOnly) {
-          console.log('👍 [Auto-Reply] Reaction detected → Using preset message only')
+          console.log('👍 [Auto-Reply] Reaction detected → Using random preset message')
           
-          // Use random preset if enabled
-          if (settings.useRandomPreset && Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
+          // Use first 5 preset messages for reactions (or all if less than 5)
+          if (Array.isArray(settings.presetMessages) && settings.presetMessages.length > 0) {
             const validPresets = settings.presetMessages.filter((msg: string) => msg && typeof msg === 'string' && msg.trim().length > 0)
+            
             if (validPresets.length > 0) {
-              const randomIndex = Math.floor(Math.random() * validPresets.length)
-              replyText = validPresets[randomIndex]
+              // Take first 5 messages (or all if less than 5)
+              const reactionPresets = validPresets.slice(0, 5)
+              const randomIndex = Math.floor(Math.random() * reactionPresets.length)
+              replyText = reactionPresets[randomIndex]
+              console.log(`✅ [Auto-Reply] Selected reaction reply ${randomIndex + 1}/${reactionPresets.length}: ${replyText.slice(0, 50)}...`)
             } else {
-              replyText = settings.autoReplyMessage || 'Cảm ơn bạn! 🙏'
+              replyText = 'Cảm ơn bạn! 🙏'
             }
           } else {
-            replyText = settings.autoReplyMessage || 'Cảm ơn bạn! 🙏'
+            replyText = 'Cảm ơn bạn! 🙏'
           }
         } else {
           // Normal message → Use AI or preset based on settings
