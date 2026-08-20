@@ -26,15 +26,27 @@ export default function UserInfoModal({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Reset user info when modal opens or userId changes
   useEffect(() => {
-    if (isOpen && userId) {
-      fetchUserInfo()
+    if (isOpen) {
+      if (userId && userId.trim() !== '') {
+        // Valid userId - reset and fetch
+        setUserInfo(null)
+        setError(null)
+        fetchUserInfo()
+      } else {
+        // Empty userId - show error
+        setUserInfo(null)
+        setError('Không tìm thấy ID người dùng. Vui lòng thử lại.')
+      }
     }
   }, [isOpen, userId])
 
   const fetchUserInfo = async () => {
     setIsLoading(true)
     setError(null)
+    
+    console.log('🔍 [UserInfoModal] Fetching info for userId:', userId)
     
     try {
       // Fetch user info from Zalo API
@@ -43,12 +55,13 @@ export default function UserInfoModal({
       
       if (data.success && data.userInfo) {
         setUserInfo(data.userInfo)
-        console.log('👤 User info:', data.userInfo)
+        console.log('✅ [UserInfoModal] User info loaded:', data.userInfo)
       } else {
         setError(data.error || 'Không thể tải thông tin người dùng')
+        console.error('❌ [UserInfoModal] Error:', data.error)
       }
     } catch (error) {
-      console.error('Failed to fetch user info:', error)
+      console.error('❌ [UserInfoModal] Failed to fetch user info:', error)
       setError('Lỗi khi tải thông tin')
     } finally {
       setIsLoading(false)
@@ -159,20 +172,20 @@ export default function UserInfoModal({
                       Giới tính:
                     </span>
                     <span className="text-xs text-white font-medium flex items-center gap-1.5">
-                      {userInfo.gender === 0 ? (
+                      {userInfo.gender === 1 ? (
                         <>
-                          <UserCircle2 className="w-3.5 h-3.5 text-gray-400" />
-                          Không xác định
+                          <User className="w-3.5 h-3.5 text-pink-400" />
+                          Nữ
                         </>
-                      ) : userInfo.gender === 1 ? (
+                      ) : userInfo.gender === 0 ? (
                         <>
                           <User className="w-3.5 h-3.5 text-blue-400" />
                           Nam
                         </>
                       ) : (
                         <>
-                          <User className="w-3.5 h-3.5 text-pink-400" />
-                          Nữ
+                          <UserCircle2 className="w-3.5 h-3.5 text-gray-400" />
+                          Không xác định
                         </>
                       )}
                     </span>

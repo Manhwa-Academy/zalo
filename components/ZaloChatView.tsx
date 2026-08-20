@@ -208,7 +208,8 @@ function renderMessageContent(
   mediaCache?: Record<string, string>,
   setMediaCache?: React.Dispatch<React.SetStateAction<Record<string, string>>>,
   threadId?: string, // NEW: Thread ID for call back button
-  onMentionClick?: (mentionName: string) => void // NEW: Callback when mention is clicked
+  onMentionClick?: (mentionName: string) => void, // NEW: Callback when mention is clicked
+  onContactCardClick?: (userId: string, userName: string, userAvatar: string) => void // NEW: Callback for contact card click
 ) {
   if (!content) return null
 
@@ -365,6 +366,7 @@ function renderMessageContent(
       const linkTitle = parsedObj.title || linkUrl
       const linkDesc = parsedObj.description || ''
       const linkThumb = parsedObj.thumbnail || ''
+      const linkParams = parsedObj.params || '' // Extract params from root level
       
       // Check if this is a Bank QR code (title contains bank info)
       const isBankQR = linkTitle.includes('QR thanh toan') || linkTitle.includes('Ngan hang') || linkTitle.includes('MBBank')
@@ -441,6 +443,18 @@ function renderMessageContent(
       
       // Render contact card
       if (isContactCard) {
+        // Extract userId from params field at root level
+        let contactUserId = linkParams || ''
+        
+        // Fallback: If no params (old messages), try to find user by name
+        if (!contactUserId && linkTitle && onMentionClick) {
+          // Will search in friends/group members by name
+          console.log('⚠️ [Contact Card] No params found, will search by name:', linkTitle)
+        }
+        
+        console.log('🎯 [Contact Card] Extracted userId from params:', contactUserId)
+        console.log('🎯 [Contact Card] onContactCardClick available?', !!onContactCardClick)
+        
         return (
           <div className="max-w-xs">
             <div className="p-4 bg-gradient-to-br from-dark-300 to-dark-300/70 border border-cyan-500/30 rounded-2xl shadow-xl">
@@ -517,8 +531,17 @@ function renderMessageContent(
               <div className="flex gap-2">
                 <button
                   onClick={() => {
-                    // Open in new tab
-                    if (linkUrl) {
+                    console.log('👤 [Contact Card] Opening user info for:', { contactUserId, linkTitle, linkThumb })
+                    
+                    if (contactUserId && onContactCardClick) {
+                      // Has userId from params - use callback directly
+                      onContactCardClick(contactUserId, linkTitle || 'User', linkThumb || '')
+                    } else if (linkTitle && onMentionClick) {
+                      // Fallback: No params (old message) - search by name using mention click
+                      console.log('🔍 [Contact Card] Using fallback: search by name')
+                      onMentionClick(linkTitle)
+                    } else if (linkUrl) {
+                      // Last fallback: Open in new tab if no userId or callback
                       window.open(linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`, '_blank')
                     }
                   }}
@@ -1494,6 +1517,8 @@ export default function ZaloChatView({
   const [showFriendManagementModal, setShowFriendManagementModal] = useState(false) // 🆕 Friend management modal
   const [showProfileManagementModal, setShowProfileManagementModal] = useState(false) // 🆕 Profile management modal
   const [showUserInfoModal, setShowUserInfoModal] = useState(false) // 🆕 User info modal (for other users)
+  const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false) // 🆕 User not found modal
+  const [userNotFoundName, setUserNotFoundName] = useState('') // 🆕 Name of user not found
   const [selectedUserId, setSelectedUserId] = useState<string>('') // 🆕 Selected user ID for info modal
   const [selectedUserName, setSelectedUserName] = useState<string>('') // 🆕 Selected user name
   const [selectedUserAvatar, setSelectedUserAvatar] = useState<string>('') // 🆕 Selected user avatar
@@ -4103,25 +4128,37 @@ export default function ZaloChatView({
                     } ${isPinned ? 'bg-amber-500/5' : ''}`}
                   >
                     <div className="relative">
-                      {conv.type !== 'Group' && conv.avatar ? (
+                      {conv.type === 'Group' && conv.avatar ? (
                         <img 
                           src={conv.avatar} 
                           alt={conv.name} 
                           className="w-11 h-11 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all" 
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (conv.type !== 'Group') {
-                              // Open user info modal for 1-on-1 chat
-                              setSelectedUserId(conv.threadId)
-                              setSelectedUserName(conv.name)
-                              setSelectedUserAvatar(conv.avatar || '')
-                              setShowUserInfoModal(true)
-                            }
+                            // Groups don't open user info modal
+                          }}
+                        />
+                      ) : conv.type === 'Group' ? (
+                        <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow">
+                          <Users className="w-6 h-6" />
+                        </div>
+                      ) : conv.avatar ? (
+                        <img 
+                          src={conv.avatar} 
+                          alt={conv.name} 
+                          className="w-11 h-11 rounded-2xl object-cover cursor-pointer hover:ring-2 hover:ring-sky-400 transition-all" 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            // Open user info modal for 1-on-1 chat
+                            setSelectedUserId(conv.threadId)
+                            setSelectedUserName(conv.name)
+                            setSelectedUserAvatar(conv.avatar || '')
+                            setShowUserInfoModal(true)
                           }}
                         />
                       ) : (
                         <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 flex items-center justify-center text-white font-bold text-sm shadow">
-                          {conv.type === 'Group' ? <Users className="w-6 h-6" /> : conv.name.charAt(0)}
+                          {conv.name.charAt(0)}
                         </div>
                       )}
 
@@ -4220,10 +4257,12 @@ export default function ZaloChatView({
                 </button>
 
                 <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-primary/20 flex items-center justify-center text-primary font-bold flex-shrink-0">
-                  {activeConv.type !== 'Group' && activeConv.avatar ? (
+                  {activeConv.type === 'Group' && activeConv.avatar ? (
                     <img src={activeConv.avatar} alt={activeConv.name} className="w-full h-full rounded-2xl object-cover" />
                   ) : activeConv.type === 'Group' ? (
                     <Users className="w-5 h-5 sm:w-6 sm:h-6" />
+                  ) : activeConv.avatar ? (
+                    <img src={activeConv.avatar} alt={activeConv.name} className="w-full h-full rounded-2xl object-cover" />
                   ) : (
                     activeConv.name.charAt(0)
                   )}
@@ -4970,66 +5009,113 @@ export default function ZaloChatView({
                                     msg.threadId,
                                     // Handle mention click
                                     async (mentionName) => {
-                                      console.log('🔍 Mention clicked:', mentionName)
+                                      console.log('🔍 [Mention] Clicked:', mentionName)
                                       
                                       // Try to find user ID from group members or friends list
                                       let userId = ''
                                       let userName = mentionName
                                       let userAvatar = ''
                                       
+                                      // Normalize search string for comparison
+                                      const normalizedMention = mentionName.toLowerCase().trim()
+                                      
                                       // Search in current group members (if group chat)
                                       const activeConv = conversations.find(c => c.threadId === activeThreadId)
                                       const threadMembers = activeThreadId ? (groupMembers[activeThreadId] || []) : []
                                       
+                                      console.log('🔍 [Mention] Active conv type:', activeConv?.type)
+                                      console.log('🔍 [Mention] Thread members count:', threadMembers.length)
+                                      
                                       if (activeConv?.type === 'Group' && threadMembers.length > 0) {
-                                        const member = threadMembers.find((m: any) => 
-                                          m.name === mentionName || 
-                                          m.displayName === mentionName ||
-                                          m.zaloName === mentionName
-                                        )
+                                        console.log('🔍 [Mention] Searching in group members...')
+                                        console.log('🔍 [Mention] Member names:', threadMembers.map((m: any) => m.name))
+                                        
+                                        const member = threadMembers.find((m: any) => {
+                                          const memberName = (m.name || '').toLowerCase().trim()
+                                          const displayName = (m.displayName || '').toLowerCase().trim()
+                                          const zaloName = (m.zaloName || '').toLowerCase().trim()
+                                          
+                                          return memberName === normalizedMention || 
+                                                 displayName === normalizedMention ||
+                                                 zaloName === normalizedMention
+                                        })
+                                        
                                         if (member) {
                                           userId = member.id
                                           userName = member.name || mentionName
                                           userAvatar = member.avatar || ''
+                                          console.log('✅ [Mention] Found in group members:', { userId, userName })
+                                        } else {
+                                          console.log('⚠️ [Mention] Not found in group members')
+                                          console.log('🔍 [Mention] Tried to match:', normalizedMention)
                                         }
                                       }
                                       
                                       // If not found in group, search in friends list
                                       if (!userId && friendsList.length > 0) {
-                                        const friend = friendsList.find(f => 
-                                          f.name === mentionName
-                                        )
+                                        console.log('🔍 [Mention] Searching in friends list...')
+                                        const friend = friendsList.find(f => {
+                                          const friendName = (f.name || '').toLowerCase().trim()
+                                          return friendName === normalizedMention
+                                        })
                                         if (friend) {
                                           userId = friend.id
                                           userName = friend.name || mentionName
                                           userAvatar = friend.avatar || ''
+                                          console.log('✅ [Mention] Found in friends list:', { userId, userName })
                                         }
                                       }
                                       
                                       // If still not found, try to search by name via API
                                       if (!userId) {
+                                        console.log('🔍 [Mention] Searching via API...')
                                         try {
                                           const res = await fetch('/api/zalo/friends')
                                           if (res.ok) {
                                             const data = await res.json()
                                             const allFriends = data.friends || []
-                                            const friend = allFriends.find((f: any) => 
-                                              f.name === mentionName || 
-                                              f.displayName === mentionName ||
-                                              f.zaloName === mentionName
-                                            )
+                                            const friend = allFriends.find((f: any) => {
+                                              const friendName = (f.name || '').toLowerCase().trim()
+                                              const displayName = (f.displayName || '').toLowerCase().trim()
+                                              const zaloName = (f.zaloName || '').toLowerCase().trim()
+                                              
+                                              return friendName === normalizedMention || 
+                                                     displayName === normalizedMention ||
+                                                     zaloName === normalizedMention
+                                            })
                                             if (friend) {
                                               userId = friend.id
                                               userName = friend.name || friend.displayName || mentionName
                                               userAvatar = friend.avatar || ''
+                                              console.log('✅ [Mention] Found via API:', { userId, userName })
+                                            } else {
+                                              console.log('⚠️ [Mention] Not found via API')
                                             }
                                           }
                                         } catch (err) {
-                                          console.error('Failed to fetch friends for mention:', err)
+                                          console.error('❌ [Mention] Failed to fetch friends:', err)
                                         }
                                       }
                                       
+                                      console.log('📤 [Mention] Opening modal with:', { userId, userName, userAvatar })
+                                      
+                                      // Only open modal if we found a valid userId
+                                      if (!userId || userId.trim() === '') {
+                                        console.error('❌ [Mention] Cannot open modal: userId is empty')
+                                        setUserNotFoundName(mentionName)
+                                        setShowUserNotFoundModal(true)
+                                        return
+                                      }
+                                      
                                       // Open user info modal
+                                      setSelectedUserId(userId)
+                                      setSelectedUserName(userName)
+                                      setSelectedUserAvatar(userAvatar)
+                                      setShowUserInfoModal(true)
+                                    },
+                                    // Handle contact card click
+                                    (userId: string, userName: string, userAvatar: string) => {
+                                      console.log('📇 [Contact Card] Opening modal with:', { userId, userName, userAvatar })
                                       setSelectedUserId(userId)
                                       setSelectedUserName(userName)
                                       setSelectedUserAvatar(userAvatar)
@@ -6619,6 +6705,60 @@ export default function ZaloChatView({
         }}
       />
 
+      {/* 🆕 User Not Found Modal */}
+      {showUserNotFoundModal && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fadeIn"
+          onClick={() => setShowUserNotFoundModal(false)}
+        >
+          <div 
+            className="bg-dark-200 border border-red-500/30 rounded-3xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-red-950/80 to-orange-950/80 border-b border-red-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+                <h3 className="text-lg font-bold text-white">Không tìm thấy người dùng</h3>
+              </div>
+              <button
+                onClick={() => setShowUserNotFoundModal(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <UserX className="w-6 h-6 text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-white mb-2">
+                    Không tìm thấy thông tin của <span className="font-bold text-red-400">"{userNotFoundName}"</span>
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    Người này có thể đã rời khỏi nhóm hoặc bạn chưa kết bạn với họ.
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowUserNotFoundModal(false)}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-red-600 to-orange-600 hover:brightness-110 text-white rounded-xl text-sm font-bold transition-all shadow-lg"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Reaction Picker */}
       {reactionPicker && (
         <ReactionPicker
@@ -7233,13 +7373,22 @@ export default function ZaloChatView({
           currentUserName={userInfo.displayName || userInfo.name || 'User'}
           onMessageSent={async () => {
             // Reload messages from history API
+            console.log('📨 [Contact Card] Reloading messages after send...')
             try {
               const type = activeConv.type === 'Group' ? 'Group' : 'User'
               const res = await fetch(`/api/zalo/history?threadId=${activeConv.threadId}&type=${type}`)
               const data = await res.json()
               
               if (data.success && data.messages && Array.isArray(data.messages)) {
-                // Update conversation with new messages
+                console.log('✅ [Contact Card] Reloaded messages:', data.messages.length)
+                
+                // IMPORTANT: Update historyMessages state to trigger re-render
+                setHistoryMessages(prev => ({
+                  ...prev,
+                  [activeConv.threadId]: data.messages
+                }))
+                
+                // Also update conversation list for preview
                 setConversations(prev => 
                   prev.map(conv => 
                     conv.threadId === activeConv.threadId 
@@ -7249,7 +7398,7 @@ export default function ZaloChatView({
                 )
               }
             } catch (error) {
-              console.error('Failed to reload messages:', error)
+              console.error('❌ [Contact Card] Failed to reload messages:', error)
             }
           }}
         />
