@@ -192,48 +192,97 @@ export async function getCurrentZaloUserInfo(): Promise<any | null> {
  * ✨ Auto-link sessions: Nếu Zalo account đã tồn tại → merge về user cũ
  */
 export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
-  const userId = await getCurrentUserId();
+  const currentUserId = await getCurrentUserId();
   const zaloUserId = userInfo?.userId || userInfo?.id;
   
-  console.log(`💾 [MultiUser] Saving Zalo user info for user: ${userId}, Zalo ID: ${zaloUserId}`);
+  console.log(`💾 [MultiUser] Saving Zalo user info for user: ${currentUserId}, Zalo ID: ${zaloUserId}`);
+  
+  let finalUserId = currentUserId;
   
   // 🔍 Check if this Zalo account already exists under a different user
   if (zaloUserId) {
     const existingUser = await UserManager.getUserByZaloId(zaloUserId.toString());
     
-    if (existingUser && existingUser.id !== userId) {
+    if (existingUser && existingUser.id !== currentUserId) {
       console.log(`🔗 [MultiUser] Found existing user ${existingUser.id} for Zalo ID ${zaloUserId}`);
-      console.log(`🔗 [MultiUser] Will use existing user instead of creating duplicate`);
+      console.log(`🔗 [MultiUser] Will merge duplicate user ${currentUserId} into existing user`);
       
-      // Update current session to point to the existing user
       const sessionId = getSessionId();
-      await pool?.query(
-        'UPDATE users SET session_id = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2',
-        [sessionId, existingUser.id]
-      );
       
-      console.log(`✅ [MultiUser] Linked session ${sessionId} to existing user ${existingUser.id}`);
-      
-      // Delete the duplicate user if it has no other sessions
-      await pool?.query(
-        'DELETE FROM users WHERE id = $1 AND id NOT IN (SELECT user_id FROM zalo_sessions WHERE is_active = true)',
-        [userId]
-      );
-      
-      // Use the existing user from now on
-      // (Next call to getCurrentUserId() will return the correct one)
+      try {
+        // 🔄 TRANSACTION: Merge duplicate user into existing user
+        const client = await pool?.connect();
+        if (!client) throw new Error('Database not available');
+        
+        try {
+          await client.query('BEGIN');
+          
+          // 1. Move current session to existing user
+          await client.query(
+            'UPDATE users SET session_id = $1, last_active = CURRENT_TIMESTAMP WHERE id = $2',
+            [sessionId, existingUser.id]
+          );
+          console.log(`  ✓ Moved session ${sessionId} to user ${existingUser.id}`);
+          
+          // 2. Delete any orphaned zalo_sessions from duplicate user
+          await client.query(
+            'DELETE FROM zalo_sessions WHERE user_id = $1',
+            [currentUserId]
+          );
+          console.log(`  ✓ Deleted orphaned zalo_sessions for duplicate user ${currentUserId}`);
+          
+          // 3. Delete any orphaned bot_settings from duplicate user
+          await client.query(
+            'DELETE FROM bot_settings WHERE user_id = $1',
+            [currentUserId]
+          );
+          console.log(`  ✓ Deleted orphaned bot_settings for duplicate user ${currentUserId}`);
+          
+          // 4. Delete any orphaned messages from duplicate user
+          await client.query(
+            'DELETE FROM zalo_messages WHERE user_id = $1',
+            [currentUserId]
+          );
+          console.log(`  ✓ Deleted orphaned messages for duplicate user ${currentUserId}`);
+          
+          // 5. Delete the duplicate user itself
+          await client.query(
+            'DELETE FROM users WHERE id = $1',
+            [currentUserId]
+          );
+          console.log(`  ✓ Deleted duplicate user ${currentUserId}`);
+          
+          await client.query('COMMIT');
+          console.log(`✅ [MultiUser] Successfully merged duplicate user into ${existingUser.id}`);
+          
+          // Update finalUserId to use the existing user
+          finalUserId = existingUser.id;
+          
+          // Clear any cached instances for the old user
+          zaloInstances.delete(currentUserId);
+          zaloUserInfos.delete(currentUserId);
+          
+        } catch (error) {
+          await client.query('ROLLBACK');
+          console.error('❌ [MultiUser] Failed to merge duplicate user, rolling back:', error);
+          throw error;
+        } finally {
+          client.release();
+        }
+      } catch (error) {
+        console.error('❌ [MultiUser] Transaction error:', error);
+        // Continue without merging - better to have duplicate than fail
+        finalUserId = currentUserId;
+      }
     }
   }
   
-  // Get the final userId (might have changed after linking)
-  const finalUserId = await getCurrentUserId();
-  
-  // Lưu vào memory
+  // Lưu vào memory với userId cuối cùng
   zaloUserInfos.set(finalUserId, userInfo);
   
   // Update vào DB (UPSERT zalo_sessions)
   try {
-    const zaloApi = zaloInstances.get(finalUserId);
+    const zaloApi = zaloInstances.get(finalUserId) || zaloInstances.get(currentUserId);
     
     // Try to get credentials from zaloApi if available
     let credentials: any = null
@@ -262,6 +311,12 @@ export async function setCurrentZaloUserInfo(userInfo: any): Promise<void> {
       // Just update userInfo without overwriting credentials
       await UserManager.updateZaloUserInfo(finalUserId, userInfo);
       console.log(`✅ [MultiUser] Updated userInfo only for user: ${finalUserId}`);
+    }
+    
+    // If we switched users, update the zaloApi instance mapping
+    if (finalUserId !== currentUserId && zaloApi) {
+      zaloInstances.set(finalUserId, zaloApi);
+      console.log(`  ✓ Moved zaloApi from user ${currentUserId} to ${finalUserId}`);
     }
   } catch (error) {
     console.error('❌ [MultiUser] Failed to update user info in DB:', error);

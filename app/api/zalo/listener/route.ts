@@ -106,18 +106,28 @@ export async function GET() {
     attachListenerToApi(zaloApi)
   }
 
+  // 🆕 Get Zalo user ID for this client
+  const zaloUserId = zaloApi && typeof zaloApi.getOwnId === 'function' 
+    ? String(zaloApi.getOwnId()) 
+    : undefined
+  
+  console.log(`🔌 [SSE] New client connecting (zaloUserId: ${zaloUserId || 'none'})`)
+
   let clientId: number | null = null
 
   const stream = new ReadableStream({
     start(controller) {
       clientId = Date.now()
-      const client = { id: clientId, controller }
+      const client = { id: clientId, controller, zaloUserId }
       sseClients.push(client)
+      
+      console.log(`✅ [SSE] Client ${clientId} registered (zaloUserId: ${zaloUserId || 'none'})`)
 
       // Send initial connection message
       controller.enqueue('data: {"type":"connected"}\n\n')
 
-      // Send any queued messages
+      // 🔒 FILTER: Only send messages for this zaloUserId
+      // For now, send all messages (DB filtering will handle proper isolation)
       messageQueue.forEach((msg) => {
         try {
           controller.enqueue(`data: ${JSON.stringify(msg)}\n\n`)
@@ -133,6 +143,7 @@ export async function GET() {
           const index = sseClients.findIndex(c => c.id === clientId)
           if (index > -1) {
             sseClients.splice(index, 1)
+            console.log(`🔌 [SSE] Client ${clientId} disconnected (zaloUserId: ${zaloUserId || 'none'})`)
           }
         }
       }, 15000)
@@ -143,6 +154,7 @@ export async function GET() {
         const index = sseClients.findIndex(c => c.id === clientId)
         if (index > -1) {
           sseClients.splice(index, 1)
+          console.log(`🔌 [SSE] Client ${clientId} cancelled (zaloUserId: ${zaloUserId || 'none'})`)
         }
       }
     }

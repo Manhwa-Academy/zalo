@@ -47,16 +47,19 @@ export class UserManager {
     if (!pool) throw new Error('Database not configured');
 
     try {
+      // Tìm user có zalo_session với zaloUserId này (dù active hay không)
+      // Ưu tiên user có session active trước
       const result = await pool.query(
         `SELECT u.* FROM users u
          INNER JOIN zalo_sessions zs ON u.id = zs.user_id
          WHERE zs.user_info->>'userId' = $1
-         AND zs.is_active = true
+         ORDER BY zs.is_active DESC, u.last_active DESC
          LIMIT 1`,
         [zaloUserId]
       );
 
       if (result.rows.length > 0) {
+        console.log(`🔍 [UserManager] Found existing user for Zalo ID ${zaloUserId}: ${result.rows[0].id}`);
         return {
           id: result.rows[0].id,
           sessionId: result.rows[0].session_id,

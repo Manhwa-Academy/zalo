@@ -143,7 +143,17 @@ export async function GET(request: Request) {
     let dbMsgs: any[] = []
     if (userId) {
       try {
-        const dbMessages = await getThreadMessages(userId, threadId, 200)
+        // 🆕 Load messages based on Zalo user ID for proper multi-device sync
+        let dbMessages: any[] = []
+        
+        if (zaloUserId) {
+          console.log(`🔄 [History] Loading from all sessions for Zalo user ${zaloUserId}`)
+          dbMessages = await getMessagesForZaloUser(zaloUserId, threadId, 200)
+        } else {
+          // Fallback to current session only if no Zalo user ID
+          dbMessages = await getThreadMessages(userId, threadId, 200)
+        }
+        
         dbMsgs = dbMessages.map((msg: any) => ({
           id: msg.id,
           msgId: msg.msgId,
