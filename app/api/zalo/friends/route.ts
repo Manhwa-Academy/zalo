@@ -62,6 +62,7 @@ export async function GET() {
           }
         }
       } catch (err: any) {
+        console.error('❌ [Friends API] Raw API error:', err.message)
         // Silent error - raw API not available
       }
     }
@@ -101,6 +102,7 @@ export async function GET() {
           })
         }
       } catch (err: any) {
+        console.error('❌ [Friends API] getAllFriends error:', err.message)
         // Silent error - getAllFriends not available
       }
     }
@@ -139,13 +141,20 @@ export async function GET() {
             return friend
           })
         } catch (err: any) {
+          console.error('❌ [Friends API] getUserInfo batch error:', err.message)
           // Silent error - getUserInfo batch fetch failed
         }
       }
     }
 
+    console.log(`✅ [Friends API] Returning ${friendsList.length} friends`)
     return NextResponse.json({ success: true, friends: friendsList })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('❌ [Friends API] Unexpected error:', error)
+    return NextResponse.json({ 
+      error: error.message || 'Failed to load friends',
+      success: false,
+      friends: [] 
+    }, { status: 500 })
   }
 }

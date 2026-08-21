@@ -25,48 +25,55 @@ export async function getCurrentUserId(): Promise<string> {
   const sessionId = getSessionId();
   // console.log(`🔍 [MultiUser] Getting user for session: ${sessionId}`);
   
-  // Bước 1: Kiểm tra xem session này đã có user chưa
-  const existingUserResult = await pool?.query(
-    'SELECT * FROM users WHERE session_id = $1',
-    [sessionId]
-  );
-  
-  if (existingUserResult && existingUserResult.rows.length > 0) {
-    const userId = existingUserResult.rows[0].id;
-    // console.log(`✅ [MultiUser] User ID: ${userId} (from existing session)`);
-    
-    // Update last_active
-    await pool?.query(
-      'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1',
-      [userId]
+  try {
+    // Bước 1: Kiểm tra xem session này đã có user chưa
+    const existingUserResult = await pool?.query(
+      'SELECT * FROM users WHERE session_id = $1',
+      [sessionId]
     );
     
-    return userId;
+    if (existingUserResult && existingUserResult.rows.length > 0) {
+      const userId = existingUserResult.rows[0].id;
+      // console.log(`✅ [MultiUser] User ID: ${userId} (from existing session)`);
+      
+      // Update last_active
+      await pool?.query(
+        'UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = $1',
+        [userId]
+      );
+      
+      return userId;
+    }
+    
+    // Bước 2: Session chưa có user
+    // 🔍 Check xem session này đã login Zalo chưa, nếu rồi thì link về user cũ
+    const zaloSessionResult = await pool?.query(
+      `SELECT user_id, user_info FROM zalo_sessions 
+       WHERE user_info IS NOT NULL 
+       AND is_active = true
+       ORDER BY created_at DESC
+       LIMIT 10` // Check 10 sessions gần nhất
+    );
+    
+    let existingUserId: string | null = null;
+    
+    if (zaloSessionResult && zaloSessionResult.rows.length > 0) {
+      // Tìm xem có session nào của cùng Zalo account không
+      // (sẽ được link sau khi login thành công)
+      console.log(`🔍 [MultiUser] Found ${zaloSessionResult.rows.length} active Zalo sessions`);
+    }
+    
+    // Bước 3: Tạo user mới nếu chưa có
+    const user = await UserManager.getOrCreateUser(sessionId);
+    
+    // console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
+    return user.id;
+  } catch (error) {
+    console.error('❌ [getCurrentUserId] Error:', error);
+    // Fallback: Create temporary user
+    const user = await UserManager.getOrCreateUser(sessionId);
+    return user.id;
   }
-  
-  // Bước 2: Session chưa có user
-  // 🔍 Check xem session này đã login Zalo chưa, nếu rồi thì link về user cũ
-  const zaloSessionResult = await pool?.query(
-    `SELECT user_id, user_info FROM zalo_sessions 
-     WHERE user_info IS NOT NULL 
-     AND is_active = true
-     ORDER BY created_at DESC
-     LIMIT 10` // Check 10 sessions gần nhất
-  );
-  
-  let existingUserId: string | null = null;
-  
-  if (zaloSessionResult && zaloSessionResult.rows.length > 0) {
-    // Tìm xem có session nào của cùng Zalo account không
-    // (sẽ được link sau khi login thành công)
-    console.log(`🔍 [MultiUser] Found ${zaloSessionResult.rows.length} active Zalo sessions`);
-  }
-  
-  // Bước 3: Tạo user mới nếu chưa có
-  const user = await UserManager.getOrCreateUser(sessionId);
-  
-  // console.log(`✅ [MultiUser] User ID: ${user.id} (new user created for this session)`);
-  return user.id;
 }
 
 /**
@@ -74,22 +81,27 @@ export async function getCurrentUserId(): Promise<string> {
  * Nếu chưa có trong memory → Load từ DB
  */
 export async function getCurrentZaloApi(): Promise<any | null> {
-  const userId = await getCurrentUserId();
-  let api = zaloInstances.get(userId);
-  
-  // Nếu không có trong memory → Load từ DB (với lock để tránh load đồng thời)
-  if (!api) {
-    // Nếu đang có request khác đang load → chờ nó xong
-    const existingLock = sessionLoadingLocks.get(userId);
-    if (existingLock) {
-      // console.log(`⏳ [MultiUser] Waiting for existing session load for user [${userId}]...`);
-      api = await existingLock;
-    } else {
-      api = await loadCurrentZaloSession();
+  try {
+    const userId = await getCurrentUserId();
+    let api = zaloInstances.get(userId);
+    
+    // Nếu không có trong memory → Load từ DB (với lock để tránh load đồng thời)
+    if (!api) {
+      // Nếu đang có request khác đang load → chờ nó xong
+      const existingLock = sessionLoadingLocks.get(userId);
+      if (existingLock) {
+        // console.log(`⏳ [MultiUser] Waiting for existing session load for user [${userId}]...`);
+        api = await existingLock;
+      } else {
+        api = await loadCurrentZaloSession();
+      }
     }
+    
+    return api || null;
+  } catch (error) {
+    console.error('❌ [getCurrentZaloApi] Error:', error);
+    return null;
   }
-  
-  return api || null;
 }
 
 /**

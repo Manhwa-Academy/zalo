@@ -16,6 +16,7 @@ export async function GET() {
       knownGroups.forEach((g, id) => {
         groupMap.set(id, g)
       })
+      console.log(`✅ [Groups API] Loaded ${knownGroups.size} groups from listener cache`)
     }
 
     // 2. Fetch group IDs via getAllGroups()
@@ -38,6 +39,8 @@ export async function GET() {
           })
         }
 
+        console.log(`✅ [Groups API] Found ${groupIds.length} group IDs from getAllGroups`)
+
         // 3. Fetch detailed group info for these IDs via getGroupInfo()
         if (groupIds.length > 0 && typeof zaloApi.getGroupInfo === 'function') {
           try {
@@ -56,8 +59,10 @@ export async function GET() {
                   groupMap.set(gId, { id: gId, name, totalMember, avatar })
                 }
               })
+              console.log(`✅ [Groups API] Enriched ${Object.keys(gridMap).length} groups with details`)
             }
-          } catch (infoErr) {
+          } catch (infoErr: any) {
+            console.error('❌ [Groups API] getGroupInfo error:', infoErr.message)
             groupIds.forEach((id) => {
               if (!groupMap.has(id)) {
                 groupMap.set(id, { id, name: `Nhóm ${id}`, totalMember: 0 })
@@ -72,14 +77,21 @@ export async function GET() {
           })
         }
       } catch (err: any) {
+        console.error('❌ [Groups API] getAllGroups error:', err.message)
         // Silent error - getAllGroups failed
       }
     }
 
     const groups = Array.from(groupMap.values())
+    console.log(`✅ [Groups API] Returning ${groups.length} groups`)
 
     return NextResponse.json({ success: true, groups })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('❌ [Groups API] Unexpected error:', error)
+    return NextResponse.json({ 
+      error: error.message || 'Failed to load groups',
+      success: false,
+      groups: [] 
+    }, { status: 500 })
   }
 }
