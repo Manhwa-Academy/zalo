@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Bot, MessageSquare, Users, User, Target, Globe, Check, Shuffle, FileText, X } from 'lucide-react'
 
-export type ReplyScope = 'all' | 'user_only' | 'group_only' | 'whitelist'
+export type ReplyScope = 'all' | 'user_only' | 'group_only' | 'whitelist' | 'user_whitelist'
 
 interface GroupItem {
   id: string
@@ -49,6 +49,8 @@ export default function ControlPanel({
 }: ControlPanelProps) {
   const [groups, setGroups] = useState<GroupItem[]>([])
   const [loadingGroups, setLoadingGroups] = useState(false)
+  const [friends, setFriends] = useState<GroupItem[]>([]) // 🆕 Friends list for user whitelist
+  const [loadingFriends, setLoadingFriends] = useState(false) // 🆕 Loading state for friends
   const [manualIdInput, setManualIdInput] = useState('')
 
   // Preset Modal & Edit State
@@ -74,9 +76,36 @@ export default function ControlPanel({
     }
   }
 
+  // 🆕 Fetch friends list for user whitelist
+  const fetchFriends = async () => {
+    setLoadingFriends(true)
+    try {
+      const res = await fetch('/api/zalo/friends')
+      const data = await res.json()
+      if (data.success && Array.isArray(data.friends)) {
+        // Convert friends to GroupItem format
+        const friendsAsItems: GroupItem[] = data.friends.map((f: any) => ({
+          id: String(f.id),
+          name: f.name || `User ${String(f.id).slice(-4)}`,
+          avatar: f.avatar || '',
+          totalMember: 0, // Not applicable for users
+        }))
+        setFriends(friendsAsItems)
+      }
+    } catch (e) {
+      console.error('Failed to fetch friends:', e)
+    } finally {
+      setLoadingFriends(false)
+    }
+  }
+
   useEffect(() => {
     if (replyScope === 'group_only' || replyScope === 'whitelist') {
       fetchGroups()
+    }
+    // 🆕 Fetch friends when user_whitelist mode is selected
+    if (replyScope === 'user_whitelist') {
+      fetchFriends()
     }
   }, [replyScope])
 
@@ -266,6 +295,22 @@ export default function ControlPanel({
 
           <button
             type="button"
+            onClick={() => onScopeChange('user_whitelist')}
+            className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
+              replyScope === 'user_whitelist'
+                ? 'border-primary bg-primary/20 text-white shadow-lg'
+                : 'border-dark-200 bg-dark-300 text-gray-400 hover:text-white'
+            }`}
+          >
+            <div className="relative">
+              <Target className="w-4 h-4" />
+              <User className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 bg-dark-300 rounded-full" />
+            </div>
+            Chọn người chỉ định
+          </button>
+
+          <button
+            type="button"
             onClick={() => onScopeChange('group_only')}
             className={`p-3 rounded-lg text-xs font-semibold text-center border transition-all flex items-center justify-center gap-2 ${
               replyScope === 'group_only'
@@ -415,6 +460,129 @@ export default function ControlPanel({
             )}
           </div>
         )}
+
+        {/* 🆕 Whitelist USER selection view */}
+        {replyScope === 'user_whitelist' && (
+          <div className="p-4 bg-dark-300/60 rounded-xl border border-dark-200 space-y-4 animate-slideIn">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-gray-200">
+                  Danh sách người dùng chọn lọc
+                </h4>
+                <p className="text-[11px] text-gray-400">
+                  {whitelist.length > 0
+                    ? `🎯 CHỈ trả lời ${whitelist.length} người được tích chọn (khung xanh). Người khác sẽ bị BỎ QUA.`
+                    : '⚠️ Hãy TÍCH CHỌN ít nhất 1 người bên dưới để Bot biết người nào cần trả lời!'
+                  }
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchFriends}
+                disabled={loadingFriends}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                {loadingFriends ? '⏳ Đang tải...' : '🔄 Làm mới danh sách bạn bè'}
+              </button>
+            </div>
+
+            {/* Manual ID Add Input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Nhập ID Người dùng thủ công..."
+                value={manualIdInput}
+                onChange={(e) => setManualIdInput(e.target.value)}
+                className="input text-xs py-2 flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleAddManualId}
+                className="btn btn-primary text-xs py-2 px-4"
+              >
+                + Thêm ID
+              </button>
+            </div>
+
+            {/* Fetched Zalo Friends List */}
+            {friends.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                {friends.map((friend) => {
+                  const isChecked = whitelist.includes(friend.id)
+                  return (
+                    <div
+                      key={friend.id}
+                      onClick={() => toggleGroupInWhitelist(friend.id)}
+                      className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                        isChecked
+                          ? 'border-success/50 bg-success/10 text-white'
+                          : 'border-dark-200 bg-dark-200/50 text-gray-400 hover:bg-dark-200'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                          className="w-4 h-4 accent-success cursor-pointer"
+                        />
+                        {friend.avatar ? (
+                          <img
+                            src={friend.avatar}
+                            alt={friend.name}
+                            className="w-9 h-9 rounded-full object-cover border border-dark-100 shadow-sm shrink-0"
+                            onError={(e) => {
+                              ;(e.target as HTMLElement).style.display = 'none'
+                            }}
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 font-bold text-xs shrink-0">
+                            <User className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-200">{friend.name}</p>
+                          <p className="text-[10px] text-gray-400">ID: {friend.id}</p>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-medium px-2 py-1 rounded transition-colors ${isChecked ? 'bg-success text-white' : 'bg-gray-800 text-gray-400 border border-gray-700'}`}>
+                        {isChecked ? '✅ Đã chọn (Cho phép)' : '🚫 Chưa chọn (Bỏ qua)'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-3">
+                {loadingFriends ? 'Đang tải danh sách bạn bè...' : 'Nếu không tìm thấy người dùng tự động, bạn có thể tự dán ID vào ô trên để thêm!'}
+              </p>
+            )}
+
+            {/* Whitelist Selected Badges */}
+            {whitelist.length > 0 && (
+              <div className="pt-2 border-t border-dark-200">
+                <p className="text-[11px] text-gray-400 mb-2">Các ID đã thêm vào danh sách:</p>
+                <div className="flex flex-wrap gap-2">
+                  {whitelist.map((id) => (
+                    <span
+                      key={id}
+                      className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 bg-primary/20 border border-primary/40 text-primary-light rounded-full"
+                    >
+                      ID: {id}
+                      <button
+                        type="button"
+                        onClick={() => toggleGroupInWhitelist(id)}
+                        className="hover:text-red-400 font-bold ml-1"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bot active notice */}
@@ -423,7 +591,7 @@ export default function ControlPanel({
           <div className="flex items-center space-x-2">
             <div className="w-2 h-2 bg-success rounded-full animate-pulse"></div>
             <p className="text-sm text-success font-medium flex items-center gap-1 flex-wrap">
-              Bot đang hoạt động và áp dụng pham vi: {' '}
+              Bot đang hoạt động và áp dụng phạm vi: {' '}
               {replyScope === 'all' && (
                 <>
                   <Globe className="w-4 h-4 inline" /> Tất cả trò chuyện
@@ -432,6 +600,11 @@ export default function ControlPanel({
               {replyScope === 'user_only' && (
                 <>
                   <User className="w-4 h-4 inline" /> Chỉ tin cá nhân
+                </>
+              )}
+              {replyScope === 'user_whitelist' && (
+                <>
+                  <Target className="w-4 h-4 inline" /> <User className="w-3 h-3 inline" /> Người dùng chỉ định ({whitelist.length} người)
                 </>
               )}
               {replyScope === 'group_only' && (

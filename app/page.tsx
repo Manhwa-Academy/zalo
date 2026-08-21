@@ -30,7 +30,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'chat' | 'dashboard'>('chat')
   const [botEnabled, setBotEnabled] = useState(false)
   const [autoReplyMessage, setAutoReplyMessage] = useState('Xin chào! Tôi đang bận, sẽ phản hồi bạn sớm nhất có thể. 🙏')
-  const [replyScope, setReplyScope] = useState<'all' | 'user_only' | 'group_only' | 'whitelist'>('all')
+  const [replyScope, setReplyScope] = useState<'all' | 'user_only' | 'group_only' | 'whitelist' | 'user_whitelist'>('all')
   const [whitelist, setWhitelist] = useState<string[]>([])
   const [messageLogs, setMessageLogs] = useState<any[]>([])
   const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null)
@@ -1193,7 +1193,7 @@ export default function Home() {
   }
 
   // Change reply scope
-  const handleScopeChange = async (scope: 'all' | 'user_only' | 'group_only' | 'whitelist') => {
+  const handleScopeChange = async (scope: 'all' | 'user_only' | 'group_only' | 'whitelist' | 'user_whitelist') => {
     setReplyScope(scope)
     await syncSettings({ replyScope: scope })
   }

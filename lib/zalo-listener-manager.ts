@@ -395,6 +395,14 @@ async function shouldAutoReply(threadId: string, isGroupMsg: boolean): Promise<b
   if (scope === 'user_only' && isGroupMsg) return false
   if (scope === 'group_only' && !isGroupMsg) return false
 
+  // 🆕 user_whitelist: Only reply to selected users (1-1 chat)
+  if (scope === 'user_whitelist') {
+    if (isGroupMsg) return false // Don't reply to groups in user_whitelist mode
+    const whitelist: string[] = Array.isArray(settings.whitelist) ? settings.whitelist : []
+    if (whitelist.length === 0) return false // No users selected
+    return whitelist.includes(threadId) // Only reply if user is in whitelist
+  }
+
   if (scope === 'whitelist') {
     const whitelist: string[] = Array.isArray(settings.whitelist) ? settings.whitelist : []
     if (whitelist.length === 0) return false
