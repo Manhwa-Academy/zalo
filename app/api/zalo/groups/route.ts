@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getCurrentZaloApi } from '@/lib/multi-user-zalo'
 import { knownGroups } from '@/lib/zalo-listener-manager'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const zaloApi = await getCurrentZaloApi() as any

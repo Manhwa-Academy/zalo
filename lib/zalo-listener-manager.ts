@@ -310,6 +310,8 @@ async function getBotSettingsAsync() {
       replyDelay: 5000, // Default 5 seconds in milliseconds
       replyScope: 'all',
       whitelist: [],
+      groupWhitelist: [],
+      userWhitelist: [],
       blacklist: [],
       useRandomPreset: true,
       presetMessages: [
@@ -355,6 +357,8 @@ async function getBotSettingsAsync() {
         replyDelay: botConfig.reply_delay,
         replyScope: configSettings.replyScope,
         whitelist: configSettings.whitelist?.length || 0,
+        groupWhitelist: configSettings.groupWhitelist?.length || 0,
+        userWhitelist: configSettings.userWhitelist?.length || 0,
         blacklist: configSettings.blacklist?.length || 0,
         useRandomPreset: configSettings.useRandomPreset
       })
@@ -364,6 +368,8 @@ async function getBotSettingsAsync() {
       finalSettings.replyDelay = botConfig.reply_delay || 5000 // Default 5 seconds in milliseconds
       finalSettings.replyScope = configSettings.replyScope || 'all'
       finalSettings.whitelist = Array.isArray(configSettings.whitelist) ? configSettings.whitelist : []
+      finalSettings.groupWhitelist = Array.isArray(configSettings.groupWhitelist) ? configSettings.groupWhitelist : []
+      finalSettings.userWhitelist = Array.isArray(configSettings.userWhitelist) ? configSettings.userWhitelist : []
       finalSettings.blacklist = Array.isArray(configSettings.blacklist) ? configSettings.blacklist : []
       finalSettings.useRandomPreset = configSettings.useRandomPreset ?? true
       
@@ -394,6 +400,8 @@ function getDefaultSettings() {
     replyDelay: 5000, // Default 5 seconds in milliseconds
     replyScope: 'all',
     whitelist: [],
+    groupWhitelist: [],
+    userWhitelist: [],
     blacklist: [],
     useRandomPreset: false,
     presetMessages: [],
@@ -414,28 +422,72 @@ async function shouldAutoReply(threadId: string, isGroupMsg: boolean): Promise<b
 
   const scope = settings.replyScope || 'all'
 
-  if (scope === 'user_only' && isGroupMsg) return false
-  if (scope === 'group_only' && !isGroupMsg) return false
-
-  // 🆕 user_whitelist: Only reply to selected users (1-1 chat)
-  if (scope === 'user_whitelist') {
-    if (isGroupMsg) return false // Don't reply to groups in user_whitelist mode
-    const whitelist: string[] = Array.isArray(settings.whitelist) ? settings.whitelist : []
-    if (whitelist.length === 0) return false // No users selected
-    return whitelist.includes(threadId) // Only reply if user is in whitelist
-  }
-
-  if (scope === 'whitelist') {
-    const whitelist: string[] = Array.isArray(settings.whitelist) ? settings.whitelist : []
-    if (whitelist.length === 0) return false
-    return whitelist.includes(threadId)
-  }
-
+  // 🔥 NEW LOGIC: Support group and user whitelists separately
+  const groupWhitelist: string[] = Array.isArray(settings.groupWhitelist) ? settings.groupWhitelist : []
+  const userWhitelist: string[] = Array.isArray(settings.userWhitelist) ? settings.userWhitelist : []
   const blacklist: string[] = Array.isArray(settings.blacklist) ? settings.blacklist : []
+  
+  // Fallback to old whitelist for backwards compatibility
+  const legacyWhitelist: string[] = Array.isArray(settings.whitelist) ? settings.whitelist : []
+  
+  // 1. Check blacklist first (highest priority - always block)
   if (blacklist.includes(threadId)) {
+    console.log(`🚫 [Auto-Reply] Blocked by blacklist: ${threadId}`)
     return false
   }
-
+  
+  // 2. If whitelist mode (groups), check groupWhitelist
+  if (scope === 'whitelist') {
+    const effectiveGroupWhitelist = groupWhitelist.length > 0 ? groupWhitelist : legacyWhitelist
+    
+    if (effectiveGroupWhitelist.length === 0) {
+      console.log(`⚠️ [Auto-Reply] Whitelist mode but no groups selected`)
+      return false
+    }
+    
+    // Only apply to group messages
+    if (!isGroupMsg) {
+      console.log(`⏩ [Auto-Reply] Whitelist mode (groups only), skipping 1-1 chat`)
+      return false
+    }
+    
+    const isInWhitelist = effectiveGroupWhitelist.includes(threadId)
+    console.log(`🔍 [Auto-Reply] Group whitelist check: threadId=${threadId}, inWhitelist=${isInWhitelist}`)
+    return isInWhitelist
+  }
+  
+  // 3. If user_whitelist mode, check userWhitelist
+  if (scope === 'user_whitelist') {
+    const effectiveUserWhitelist = userWhitelist.length > 0 ? userWhitelist : legacyWhitelist
+    
+    if (effectiveUserWhitelist.length === 0) {
+      console.log(`⚠️ [Auto-Reply] User whitelist mode but no users selected`)
+      return false
+    }
+    
+    // Only apply to 1-1 chats
+    if (isGroupMsg) {
+      console.log(`⏩ [Auto-Reply] User whitelist mode (1-1 only), skipping group`)
+      return false
+    }
+    
+    const isInWhitelist = effectiveUserWhitelist.includes(threadId)
+    console.log(`🔍 [Auto-Reply] User whitelist check: threadId=${threadId}, inWhitelist=${isInWhitelist}`)
+    return isInWhitelist
+  }
+  
+  // 4. Check scope restrictions
+  if (scope === 'user_only' && isGroupMsg) {
+    console.log(`⏩ [Auto-Reply] User-only mode, skipping group`)
+    return false
+  }
+  if (scope === 'group_only' && !isGroupMsg) {
+    console.log(`⏩ [Auto-Reply] Group-only mode, skipping 1-1 chat`)
+    return false
+  }
+  
+  // 5. Default: reply to all (if enabled and not blacklisted)
+  console.log(`✅ [Auto-Reply] Allowed (scope=${scope}, isGroup=${isGroupMsg})`)
   return true
 }
 
@@ -1135,15 +1187,38 @@ export function attachListenerToApi(zaloApi: any) {
         console.log(`✅ [Auto-Reply] Delay completed, sending reply now`)
         
         const threadTypeParam = isGroupMsg ? 1 : 0
-        await zaloApi.sendMessage(
+        const sendResult = await zaloApi.sendMessage(
           { msg: replyText },
           targetThreadId,
           threadTypeParam
         )
         autoReplied = true
         messageData.replied = true
+        
+        // 🆕 IMMEDIATELY broadcast the auto-reply message to UI
+        // Don't wait for listener event (which might be delayed)
+        console.log('📤 [Auto-Reply] Broadcasting auto-reply message to UI immediately')
+        const autoReplyMessage = {
+          msgId: sendResult?.msgId || sendResult?.data?.msgId || `temp_${Date.now()}`,
+          cliMsgId: sendResult?.cliMsgId || sendResult?.data?.cliMsgId || `temp_${Date.now()}_cli`,
+          threadId: targetThreadId,
+          content: replyText,
+          type: 'text',
+          messageType: 'text',
+          from: ownId,
+          fromName: 'Bạn (Auto-reply)',
+          isSelf: true,
+          timestamp: Date.now(),
+          isGroupMsg,
+          avatar: senderAvatar,
+        }
+        
+        // Broadcast immediately to update UI
+        broadcastMessage(autoReplyMessage, zaloUserId)
+        console.log('✅ [Auto-Reply] Auto-reply message broadcasted to UI')
       } catch (err: any) {
         // Silent error - auto-reply failed
+        console.error('❌ [Auto-Reply] Failed:', err)
       }
     }
 

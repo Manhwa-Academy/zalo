@@ -24,8 +24,10 @@ export interface BotSettings {
   enabled: boolean;
   autoReplyMessage: string;
   replyDelay: number;
-  replyScope?: string; // 'all' | 'user_only' | 'group_only' | 'whitelist'
-  whitelist?: string[];
+  replyScope?: string; // 'all' | 'user_only' | 'group_only' | 'whitelist' | 'user_whitelist'
+  whitelist?: string[]; // 🔧 DEPRECATED: Use groupWhitelist or userWhitelist instead
+  groupWhitelist?: string[]; // 🆕 NEW: List of group IDs to reply
+  userWhitelist?: string[]; // 🆕 NEW: List of user IDs to reply
   blacklist?: string[];
   useRandomPreset?: boolean;
   presetMessages?: string[];
@@ -297,6 +299,22 @@ export class UserManager {
       // Parse settings from JSONB if exists
       const parsedSettings = row.settings || {};
       
+      // 🆕 MIGRATION: Convert old whitelist to groupWhitelist/userWhitelist
+      let groupWhitelist = parsedSettings.groupWhitelist || []
+      let userWhitelist = parsedSettings.userWhitelist || []
+      
+      // If old whitelist exists but new ones don't, migrate based on replyScope
+      if (parsedSettings.whitelist && parsedSettings.whitelist.length > 0) {
+        if (!parsedSettings.groupWhitelist && parsedSettings.replyScope === 'whitelist') {
+          groupWhitelist = parsedSettings.whitelist
+          console.log(`📦 [Migration] Migrated ${groupWhitelist.length} items from whitelist to groupWhitelist`)
+        }
+        if (!parsedSettings.userWhitelist && parsedSettings.replyScope === 'user_whitelist') {
+          userWhitelist = parsedSettings.whitelist
+          console.log(`📦 [Migration] Migrated ${userWhitelist.length} items from whitelist to userWhitelist`)
+        }
+      }
+      
       // Load Gemini settings from user_settings table
       let geminiApiKey = ''
       let geminiModel = 'gemini-3.1-flash-lite'
@@ -322,7 +340,9 @@ export class UserManager {
         autoReplyMessage: row.auto_reply_message,
         replyDelay: row.reply_delay,
         replyScope: parsedSettings.replyScope || 'all',
-        whitelist: parsedSettings.whitelist || [],
+        whitelist: parsedSettings.whitelist || [], // 🔧 Keep for backwards compatibility
+        groupWhitelist, // 🆕 NEW: Separate group whitelist
+        userWhitelist, // 🆕 NEW: Separate user whitelist
         blacklist: parsedSettings.blacklist || [],
         useRandomPreset: parsedSettings.useRandomPreset || false,
         presetMessages: parsedSettings.presetMessages || [],
@@ -387,7 +407,9 @@ export class UserManager {
         // Extra fields (save to JSONB settings column)
         const newExtraFields: any = {};
         if (updates.replyScope !== undefined) newExtraFields.replyScope = updates.replyScope;
-        if (updates.whitelist !== undefined) newExtraFields.whitelist = updates.whitelist;
+        if (updates.whitelist !== undefined) newExtraFields.whitelist = updates.whitelist; // 🔧 Keep for backwards compatibility
+        if (updates.groupWhitelist !== undefined) newExtraFields.groupWhitelist = updates.groupWhitelist; // 🆕 NEW
+        if (updates.userWhitelist !== undefined) newExtraFields.userWhitelist = updates.userWhitelist; // 🆕 NEW
         if (updates.blacklist !== undefined) newExtraFields.blacklist = updates.blacklist;
         if (updates.useRandomPreset !== undefined) newExtraFields.useRandomPreset = updates.useRandomPreset;
         if (updates.presetMessages !== undefined) newExtraFields.presetMessages = updates.presetMessages;
