@@ -1195,27 +1195,13 @@ export function attachListenerToApi(zaloApi: any) {
         autoReplied = true
         messageData.replied = true
         
-        // 🆕 IMMEDIATELY broadcast the auto-reply message to UI
-        // Don't wait for listener event (which might be delayed)
-        console.log('📤 [Auto-Reply] Broadcasting auto-reply message to UI immediately')
-        const autoReplyMessage = {
-          msgId: sendResult?.msgId || sendResult?.data?.msgId || `temp_${Date.now()}`,
-          cliMsgId: sendResult?.cliMsgId || sendResult?.data?.cliMsgId || `temp_${Date.now()}_cli`,
-          threadId: targetThreadId,
-          content: replyText,
-          type: 'text',
-          messageType: 'text',
-          from: ownId,
-          fromName: 'Bạn (Auto-reply)',
-          isSelf: true,
-          timestamp: Date.now(),
-          isGroupMsg,
-          avatar: senderAvatar,
-        }
+        // 🆕 DON'T broadcast immediately - let the listener event handle it
+        // This prevents duplicate messages (immediate broadcast + listener event)
+        // The listener will receive the message with isSelf=true and broadcast it
+        console.log('✅ [Auto-Reply] Message sent, waiting for listener event to broadcast...')
         
-        // Broadcast immediately to update UI
-        broadcastMessage(autoReplyMessage, zaloUserId)
-        console.log('✅ [Auto-Reply] Auto-reply message broadcasted to UI')
+        // If you want immediate UI update, uncomment below (but may cause duplicates):
+        // broadcastMessage({ ... }, zaloUserId)
       } catch (err: any) {
         // Silent error - auto-reply failed
         console.error('❌ [Auto-Reply] Failed:', err)
