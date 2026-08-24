@@ -823,11 +823,11 @@ export function attachListenerToApi(zaloApi: any) {
       // Clean up old entries (prevent memory leak)
       if (processedMessages.size > 1000) {
         const now = Date.now()
-        for (const [key, timestamp] of processedMessages.entries()) {
+        processedMessages.forEach((timestamp, key) => {
           if (now - timestamp > PROCESSED_MESSAGE_TTL) {
             processedMessages.delete(key)
           }
-        }
+        })
       }
     }
 
