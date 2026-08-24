@@ -16,6 +16,10 @@ let clientCounter = 0
 // In-memory message store loaded from file
 export let messageQueue: any[] = loadStoredMessages()
 
+// 🆕 Track processed messages to prevent duplicates (msgId -> timestamp)
+const processedMessages = new Map<string, number>()
+const PROCESSED_MESSAGE_TTL = 60000 // 1 minute
+
 // Cache for group metadata (id -> { name, totalMember })
 export const knownGroups = new Map<string, { id: string; name: string; totalMember: number }>()
 
@@ -792,8 +796,40 @@ export function attachListenerToApi(zaloApi: any) {
       isSelf: message.isSelf,
       from: message.data?.uidFrom || message.from,
       content: message.data?.content || message.content,
-      type: message.type
+      type: message.type,
+      msgId: message.data?.msgId || message.msgId,
+      cliMsgId: message.data?.cliMsgId || message.cliMsgId,
     })
+
+    // 🔒 ANTI-DUPLICATE: Check if this message was already processed
+    const msgId = String(message.data?.msgId || message.msgId || '')
+    const cliMsgId = String(message.data?.cliMsgId || message.cliMsgId || '')
+    const messageKey = msgId || cliMsgId
+    
+    if (messageKey && processedMessages.has(messageKey)) {
+      const lastProcessed = processedMessages.get(messageKey)!
+      const timeSinceProcessed = Date.now() - lastProcessed
+      
+      if (timeSinceProcessed < PROCESSED_MESSAGE_TTL) {
+        console.log(`🔄 [Listener] Duplicate message detected (already processed ${timeSinceProcessed}ms ago), skipping:`, messageKey)
+        return // Skip this duplicate message
+      }
+    }
+    
+    // Mark this message as processed
+    if (messageKey) {
+      processedMessages.set(messageKey, Date.now())
+      
+      // Clean up old entries (prevent memory leak)
+      if (processedMessages.size > 1000) {
+        const now = Date.now()
+        for (const [key, timestamp] of processedMessages.entries()) {
+          if (now - timestamp > PROCESSED_MESSAGE_TTL) {
+            processedMessages.delete(key)
+          }
+        }
+      }
+    }
 
     // 🆕 Get Zalo user ID for multi-device sync
     const zaloUserId = typeof zaloApi.getOwnId === 'function' ? String(zaloApi.getOwnId()) : ''
